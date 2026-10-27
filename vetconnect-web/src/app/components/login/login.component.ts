@@ -91,8 +91,10 @@ export class LoginComponent {
             this.router.navigate(['/reservas']);
             break;
           case 'RECEPCIONISTA':
-          case 'ADMIN':
             this.router.navigate(['/recepcion']);
+            break;
+          case 'ADMIN':
+            this.router.navigate(['/admin']);
             break;
           case 'VETERINARIO':
             this.router.navigate(['/veterinario']);

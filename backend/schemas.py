@@ -25,6 +25,27 @@ class DoctorOut(BaseModel):
     full_name: str
     specialty: str
     box_number: int
+    is_active: bool
+    phone: str
+
+
+class DoctorCreate(BaseModel):
+    full_name: str
+    specialty: str
+    email: EmailStr
+    password: str
+    box_number: int
+    is_active: bool = True
+    phone: str = ''
+
+
+class DoctorUpdate(BaseModel):
+    full_name: str | None = None
+    specialty: str | None = None
+    box_number: int | None = None
+    is_active: bool | None = None
+    password: str | None = None
+    phone: str | None = None
 
 
 class SlotOut(BaseModel):
@@ -105,3 +126,9 @@ class MedicalRecordOut(BaseModel):
     treatment: str
     prescription: str
     updated_at: datetime
+
+
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    location: str

@@ -19,9 +19,19 @@ interface StatusFilter {
     <section class="min-h-screen bg-pine-soft p-6">
       <div class="max-w-6xl mx-auto">
         <!-- Header -->
-        <header class="mb-8">
-          <h2 class="text-3xl font-bold text-pine">Panel de Recepción</h2>
-          <p class="text-slate-600 mt-1">Clínica Veterinaria San Francisco - Talca</p>
+        <header class="mb-8 flex justify-between items-center">
+          <div>
+            <h2 class="text-3xl font-bold text-pine">Panel de Recepción</h2>
+            <p class="text-slate-600 mt-1">Clínica Veterinaria San Francisco - Talca</p>
+          </div>
+
+          <!-- Botón de Cerrar Sesión -->
+          <button
+            (click)="logout()"
+            class="px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-md shadow-sm hover:bg-red-50 transition"
+          >
+            Cerrar Sesión
+          </button>
         </header>
 
         <!-- Filtros -->
@@ -166,7 +176,7 @@ export class ReceptionComponent implements OnInit {
   private router = inject(Router);
   auth = inject(AuthService);
 
-  filterDate = '';
+  filterDate = new Date().toLocaleDateString('en-CA'); // Formato YYYY-MM-DD
   filterDoctorId: number | null = null;
   filterStatus: 'CONFIRMED' | 'ARRIVED' | 'COMPLETED' | 'CANCELLED' | '' = '';
 
@@ -201,10 +211,19 @@ export class ReceptionComponent implements OnInit {
   loadAgenda(): void {
     this.loadingAgenda.set(true);
     this.api
-      .getDailyAgenda(this.filterDate, this.filterDoctorId as number | undefined)
+      .getDailyAgenda(
+        this.filterDate,
+        this.filterDoctorId as number | undefined
+      )
       .subscribe({
         next: (agenda) => {
-          const processedAgenda = agenda.map((apt) => {
+          // Filtrar por estado localmente si se seleccionó uno
+          let filtered = agenda;
+          if (this.filterStatus) {
+            filtered = agenda.filter(apt => apt.status === this.filterStatus);
+          }
+
+          const processedAgenda = filtered.map((apt) => {
             return {
               ...apt,
               _statusClass: this.statusClass(apt.status),
@@ -214,6 +233,10 @@ export class ReceptionComponent implements OnInit {
           this.agenda.set(processedAgenda as AppointmentDetail[]);
           this.loadingAgenda.set(false);
         },
+        error: (err) => {
+          console.error('Error al cargar agenda:', err);
+          this.loadingAgenda.set(false);
+        }
       });
   }
 
@@ -313,8 +336,9 @@ export class ReceptionComponent implements OnInit {
 
   // Notificaciones VET-15
   toggleNotifications(): void {
-    this.showNotifications.update(() => !this.showNotifications());
-    if (!this.showNotifications()) {
+    const newState = !this.showNotifications();
+    this.showNotifications.set(newState);
+    if (newState) {
       this.loadNotifications();
     }
   }
@@ -325,6 +349,12 @@ export class ReceptionComponent implements OnInit {
         this.notifications.set(notifs);
       },
     });
+  }
+
+  // Función de cierre de sesión
+  logout(): void {
+    this.auth.logout();
+    this.router.navigate(['/login']);
   }
 
   notificationsLoading = signal(false);

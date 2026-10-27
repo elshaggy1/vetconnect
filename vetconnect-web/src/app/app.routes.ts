@@ -4,12 +4,14 @@ import { BookingComponent } from './components/booking/booking.component';
 import { LoginComponent } from './components/login/login.component';
 import { ReceptionComponent } from './components/reception/reception.component';
 import { VetDashboardComponent } from './components/vet-dashboard/vet-dashboard.component';
+import { AdminComponent } from './components/admin/admin.component';
 
 export const routes: Routes = [
   { path: 'login', component: LoginComponent },
   { path: 'reservas', component: BookingComponent, canActivate: [authGuard], data: { role: 'TUTOR' } },
-  { path: 'recepcion', component: ReceptionComponent, canActivate: [authGuard], data: { role: ['RECEPCIONISTA', 'ADMIN'] } },
+  { path: 'recepcion', component: ReceptionComponent, canActivate: [authGuard], data: { role: ['RECEPCIONISTA'] } },
   { path: 'veterinario', component: VetDashboardComponent, canActivate: [authGuard], data: { role: 'VETERINARIO' } },
+  { path: 'admin', component: AdminComponent, canActivate: [authGuard], data: { role: 'ADMIN' } },
   { path: '', pathMatch: 'full', redirectTo: 'reservas' },
   { path: '**', redirectTo: 'reservas' },
 ];

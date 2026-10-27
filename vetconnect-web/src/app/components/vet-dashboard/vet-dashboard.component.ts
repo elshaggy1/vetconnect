@@ -17,16 +17,24 @@ interface AppointmentRecordMap {
     <section class="min-h-screen bg-pine-soft p-6">
       <div class="max-w-6xl mx-auto">
         <!-- Header -->
-        <header class="mb-8">
+        <header class="mb-8 flex justify-between items-center">
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-lg bg-pine flex items-center justify-center">
               <p class="text-white font-bold">{{ auth.getFullName().charAt(0) }}</p>
             </div>
             <div>
               <h2 class="text-3xl font-bold text-pine">Ficha Clínica Digital</h2>
-              <p class="text-slate-600">Clínica Veterinaria San Francisco</p>
+              <p class="text-slate-600">Clínica Veterinaria San Francisco · Dr(a). {{ auth.getFullName() }}</p>
             </div>
           </div>
+
+          <!-- Botón de Cerrar Sesión -->
+          <button
+            (click)="logout()"
+            class="px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-md shadow-sm hover:bg-red-50 transition"
+          >
+            Cerrar Sesión
+          </button>
         </header>
 
         <!-- Sección: Citas del día -->
@@ -181,9 +189,7 @@ export class VetDashboardComponent implements OnInit {
   private router = inject(Router);
   auth = inject(AuthService);
 
-  // Mapa para almacenar los datos del formulario por cada appointment_id
   recordsMap: AppointmentRecordMap = {};
-
   dailyAppointments = signal<AppointmentDetail[]>([]);
   loadingDailyAppointments = signal(false);
   pdfFilename = signal<string>('');
@@ -200,7 +206,6 @@ export class VetDashboardComponent implements OnInit {
         this.dailyAppointments.set(appointments);
         this.loadingDailyAppointments.set(false);
 
-        // Para cada cita, inicializar su estructura e intentar cargar su ficha si ya existe
         appointments.forEach((apt) => {
           this.initRecord(apt.id);
           if (apt.has_medical_record) {
@@ -214,7 +219,6 @@ export class VetDashboardComponent implements OnInit {
     });
   }
 
-  // Inicializa el objeto de formulario para una cita si no existe
   initRecord(appointmentId: number): void {
     if (!this.recordsMap[appointmentId]) {
       this.recordsMap[appointmentId] = {
@@ -230,13 +234,11 @@ export class VetDashboardComponent implements OnInit {
     }
   }
 
-  // Devuelve el objeto de registro asociado a una cita específica
   getRecord(appointmentId: number): MedicalRecordInput {
     this.initRecord(appointmentId);
     return this.recordsMap[appointmentId];
   }
 
-  // Carga una ficha existente desde el backend y la inyecta en el mapa
   loadExistingRecord(appointmentId: number): void {
     this.api.getMedicalRecord(appointmentId).subscribe({
       next: (record) => {
@@ -253,9 +255,7 @@ export class VetDashboardComponent implements OnInit {
           };
         }
       },
-      error: () => {
-        // Silenciar si no existe todavía
-      },
+      error: () => {},
     });
   }
 
@@ -294,7 +294,6 @@ export class VetDashboardComponent implements OnInit {
     }
   }
 
-  // Guardar ficha clínica para una cita específica
   saveMedicalRecord(appointmentId: number): void {
     const recordData = this.getRecord(appointmentId);
     if (!recordData.pet_name) {
@@ -309,7 +308,6 @@ export class VetDashboardComponent implements OnInit {
           title: 'Guardado',
           message: 'Ficha clínica guardada exitosamente.',
         });
-        // Recargar las citas para actualizar el estado a COMPLETED y el flag has_medical_record
         this.loadDailyAppointments();
       },
       error: (err) => {
@@ -323,7 +321,6 @@ export class VetDashboardComponent implements OnInit {
     });
   }
 
-  // Generar PDF de receta para una cita específica
   generatePdf(appointmentId: number): void {
     const recordData = this.getRecord(appointmentId);
     if (!recordData.pet_name) {
@@ -357,6 +354,11 @@ export class VetDashboardComponent implements OnInit {
         });
       },
     });
+  }
+
+  logout(): void {
+    this.auth.logout();
+    this.router.navigate(['/login']);
   }
 
   showModal(modal: { type: 'success' | 'error'; title: string; message: string }): void {
