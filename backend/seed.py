@@ -14,6 +14,7 @@ USERS = [
     ("tutor@vetconnect.cl", "Tutor123!", "TUTOR", "Camila Rojas (tutora)", "+56 9 2222 2222"),
     ("vet@vetconnect.cl", "Vet123!", "VETERINARIO", "Dr. Matías Fuentes", "+56 9 3333 3333"),
     ("vet2@vetconnect.cl", "Vet123!", "VETERINARIO", "Dra. Javiera Soto", "+56 9 4444 4444"),
+    ("recepcion@vetconnect.cl", "Recep123!", "RECEPCIONISTA", "Paula Gómez (Recepción)", "+56 9 5555 5555"),
 ]
 DOCTORS = {  # email -> (especialidad, box)
     "vet@vetconnect.cl": ("Medicina general", 1),

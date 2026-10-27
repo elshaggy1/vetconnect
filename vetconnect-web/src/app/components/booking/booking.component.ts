@@ -1,7 +1,7 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { AppointmentService, Doctor, Slot } from '../../services/appointment.service';
+import { AppointmentService, Doctor, Slot, AppointmentDetail, NotificationLog } from '../../services/appointment.service';
 import { AuthService } from '../../services/auth.service';
 
 interface ModalState {
@@ -26,6 +26,44 @@ interface ModalState {
     <main class="mx-auto max-w-3xl p-6">
       <h1 class="text-2xl font-bold">Reservar una hora</h1>
       <p class="mt-1 text-slate-600">Elige médico y fecha. Solo ves los bloques que están libres.</p>
+
+      <!-- Sección: Mis reservas (solo para TUTOR) -->
+      @if (auth.getRole() === 'TUTOR') {
+        <div class="mt-6 p-4 rounded-md bg-pine-soft border border-pine mb-6">
+          <h2 class="font-semibold text-sm text-pine mb-3">Mis reservas</h2>
+          @if (!loadingMyAppointments()) {
+            @if (myAppointments().length === 0) {
+              <p class="text-slate-600 text-sm">No tienes reservas activas.</p>
+            } @else {
+              <div class="space-y-2 max-h-40 overflow-y-auto">
+                @for (apt of myAppointments(); track apt.id) {
+                  <div class="p-3 rounded-md border border-slate-300 bg-white transition">
+                    <div class="flex justify-between items-start">
+                      <span class="font-medium text-sm">{{ apt.doctor_name }}</span>
+                      <span class="text-xs text-slate-500">{{ hhmm(apt.start_time) }} - {{ hhmm(apt.end_time) }}</span>
+                    </div>
+                    <p class="text-capitalize text-sm mt-1">{{ apt.status }}</p>
+                    <div class="mt-2 flex gap-2">
+                      @if (apt.status === 'CONFIRMED' || apt.status === 'ARRIVED') {
+                        <button
+                          type="button"
+                          (click)="cancelAppointment(apt.id)"
+                          class="text-red-600 text-sm hover:underline">Cancelar</button>
+                        <button
+                          type="button"
+                          (click)="rescheduleAppointment(apt.id)"
+                          class="text-amber-vet text-sm hover:underline">Reprogramar</button>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          } @else {
+            <p class="text-slate-600 text-sm">Cargando…</p>
+          }
+        </div>
+      }
 
       <div class="mt-6 grid gap-4 sm:grid-cols-2">
         <div>
@@ -105,6 +143,8 @@ export class BookingComponent implements OnInit {
   loadingSlots = signal(false);
   submitting = signal(false);
   modal = signal<ModalState | null>(null);
+  loadingMyAppointments = signal(false);
+  myAppointments = signal<AppointmentDetail[]>([]);
 
   ngOnInit(): void {
     this.api.getDoctors().subscribe({
@@ -114,6 +154,8 @@ export class BookingComponent implements OnInit {
       },
       error: (e) => e.status === 401 && this.logout(),
     });
+    // Cargar reservas del tutor al iniciar
+    this.loadMyAppointments();
   }
 
   onDoctorChange(id: number): void {
@@ -148,6 +190,51 @@ export class BookingComponent implements OnInit {
     });
   }
 
+  // Cargar mis reservas del tutor
+  loadMyAppointments(): void {
+    if (this.auth.getRole() !== 'TUTOR') return;
+    this.loadingMyAppointments.set(true);
+    this.api.getMyAppointments().subscribe({
+      next: (appointments) => {
+        this.myAppointments.set(appointments);
+        this.loadingMyAppointments.set(false);
+      },
+      error: () => {
+        this.myAppointments.set([]);
+        this.loadingMyAppointments.set(false);
+      },
+    });
+  }
+
+  cancelAppointment(id: number): void {
+    this.api.cancelAppointment(id).subscribe({
+      next: () => {
+        this.modal.set({
+          type: 'success',
+          title: 'Reserva cancelada',
+          message: 'La cita ha sido cancelada exitosamente.',
+        });
+        this.loadMyAppointments();
+      },
+      error: (err) => {
+        this.modal.set({
+          type: 'error',
+          title: 'Error al cancelar',
+          message: err.error?.detail ?? 'Ocurrió un error inesperado.',
+        });
+      },
+    });
+  }
+
+  rescheduleAppointment(id: number): void {
+    // Implementar reprogramación si es necesario
+    this.modal.set({
+      type: 'error',
+      title: 'Reprogramar',
+      message: 'La funcionalidad de reprogramación estará disponible pronto.',
+    });
+  }
+
   confirm(): void {
     const slot = this.selected();
     const id = this.doctorId();
@@ -162,7 +249,9 @@ export class BookingComponent implements OnInit {
           title: 'Reserva confirmada',
           message: `Te esperamos el ${this.date()} a las ${this.hhmm(slot.start_time)}.`,
         });
-        this.loadSlots(); // el bloque recién tomado desaparece de la grilla
+        this.loadSlots();
+        // Recargar mis reservas después de confirmar
+        this.loadMyAppointments();
       },
       error: (err) => {
         this.submitting.set(false);

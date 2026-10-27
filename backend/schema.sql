@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     doctor_id  INTEGER NOT NULL REFERENCES doctors(id),
     tutor_id   INTEGER NOT NULL REFERENCES users(id),
     status     VARCHAR(20) NOT NULL DEFAULT 'CONFIRMED'
-               CHECK (status IN ('CONFIRMED','CANCELLED')),
+               CHECK (status IN ('CONFIRMED','ARRIVED','COMPLETED','CANCELLED')),
     start_time TIMESTAMP NOT NULL,
     end_time   TIMESTAMP NOT NULL,
     CONSTRAINT ck_appointment_range CHECK (end_time > start_time),
@@ -37,5 +37,19 @@ CREATE TABLE IF NOT EXISTS appointments (
         EXCLUDE USING gist (
             doctor_id WITH =,
             tsrange(start_time, end_time) WITH &&
-        ) WHERE (status = 'CONFIRMED')
+        ) WHERE (status IN ('CONFIRMED','ARRIVED'))
+);
+
+CREATE TABLE IF NOT EXISTS medical_records (
+    id              SERIAL PRIMARY KEY,
+    appointment_id   INTEGER NOT NULL UNIQUE REFERENCES appointments(id),
+    pet_name        VARCHAR(100) NOT NULL,
+    species         VARCHAR(50) NOT NULL DEFAULT 'Canino',
+    weight_kg       DECIMAL(5,2) NOT NULL,
+    antecedents      TEXT NOT NULL,
+    vaccines        TEXT NOT NULL,
+    diagnosis       TEXT NOT NULL,
+    treatment       TEXT NOT NULL,
+    prescription    TEXT NOT NULL,
+    updated_at      TIMESTAMP NOT NULL DEFAULT NOW()
 );

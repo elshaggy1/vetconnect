@@ -66,6 +66,7 @@ export class LoginComponent {
 
   loading = signal(false);
   error = signal('');
+  quickLoginEmail = signal('');
 
   form = this.fb.nonNullable.group({
     email: ['tutor@vetconnect.cl', [Validators.required, Validators.email]],
@@ -82,7 +83,24 @@ export class LoginComponent {
     const { email, password } = this.form.getRawValue();
 
     this.auth.login(email, password).subscribe({
-      next: () => this.router.navigate(['/reservas']), // el guard valida que el rol sea TUTOR
+      next: () => {
+        // Redirección según el rol
+        const role = this.auth.getRole();
+        switch (role) {
+          case 'TUTOR':
+            this.router.navigate(['/reservas']);
+            break;
+          case 'RECEPCIONISTA':
+          case 'ADMIN':
+            this.router.navigate(['/recepcion']);
+            break;
+          case 'VETERINARIO':
+            this.router.navigate(['/veterinario']);
+            break;
+          default:
+            this.router.navigate(['/reservas']);
+        }
+      },
       error: (err) => {
         this.loading.set(false);
         this.error.set(
@@ -90,5 +108,17 @@ export class LoginComponent {
         );
       },
     });
+  }
+
+  /** Métodos de acceso rápido para pruebas */
+  quickLogin(role: 'TUTOR' | 'RECEPCIONISTA' | 'VETERINARIO'): void {
+    const emails: Record<'TUTOR' | 'RECEPCIONISTA' | 'VETERINARIO', string> = {
+      TUTOR: 'tutor@vetconnect.cl',
+      RECEPCIONISTA: 'recepcion@vetconnect.cl',
+      VETERINARIO: 'vet@vetconnect.cl',
+    };
+    this.quickLoginEmail.set(emails[role]);
+    this.form.patchValue({ email: emails[role], password: 'Vet123!' });
+    this.submit();
   }
 }

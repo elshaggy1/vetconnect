@@ -54,3 +54,54 @@ class AppointmentOut(BaseModel):
     status: str
     start_time: datetime
     end_time: datetime
+
+
+class AppointmentDetailOut(AppointmentOut):
+    model_config = ConfigDict(from_attributes=True)
+    doctor_name: str
+    box_number: int
+    tutor_name: str
+    tutor_email: str
+    has_medical_record: bool
+
+
+class RescheduleRequest(BaseModel):
+    start_time: datetime
+    end_time: datetime
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def to_clinic_naive(cls, v: datetime) -> datetime:
+        if v.tzinfo is not None:
+            v = v.astimezone(CLINIC_TZ).replace(tzinfo=None)
+        return v
+
+
+class StatusUpdateRequest(BaseModel):
+    status: str
+
+
+class MedicalRecordUpsert(BaseModel):
+    pet_name: str
+    species: str = "Canino"
+    weight_kg: float
+    antecedents: str
+    vaccines: str
+    diagnosis: str
+    treatment: str
+    prescription: str
+
+
+class MedicalRecordOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    appointment_id: int
+    pet_name: str
+    species: str
+    weight_kg: float
+    antecedents: str
+    vaccines: str
+    diagnosis: str
+    treatment: str
+    prescription: str
+    updated_at: datetime
