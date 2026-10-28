@@ -1,72 +1,123 @@
-# VetConnect Maule · Módulo de agendamiento y autenticación
+# VetConnect Maule · Sistema de agendamiento, ficha clínica y notificaciones
 
-Backend FastAPI + PostgreSQL 15 y frontend Angular 17+ con Tailwind. Las colisiones de horario
-se impiden **en la base de datos** con una restricción `EXCLUDE USING gist` sobre
-`tsrange(start_time, end_time)`: aunque dos reservas lleguen al mismo milisegundo, PostgreSQL
-acepta una y rechaza la otra, y la API responde `409 Conflict`.
+Plataforma web para clínicas veterinarias basada en **FastAPI + PostgreSQL 15** (Backend) y **Angular 17+ con Tailwind CSS** (Frontend).
 
-## Requisitos
-Python 3.11+, Node 18.13+ (o 20), Angular CLI 17+ (`npm i -g @angular/cli`), Docker (o un PostgreSQL 15 propio).
+Las colisiones de horario se impiden directamente en la **base de datos** mediante una restricción `EXCLUDE USING gist` sobre `tsrange(start_time, end_time)`: si dos reservas llegan exactamente al mismo tiempo, PostgreSQL acepta una y rechaza la otra, respondiendo la API con un estado `409 Conflict`.
 
-## 1. Base de datos
+---
+
+## 🛠️ Requisitos del sistema
+
+- **Python:** 3.11+
+- **Node.js:** 18.13+ o 20+
+- **Angular CLI:** 17+ (`npm i -g @angular/cli`)
+- **Base de Datos:** Docker (recomendado) o instancia local de PostgreSQL 15+ con extensión `btree_gist`.
+
+---
+
+## 🚀 Inicio rápido
+
+### 1. Base de datos
+
 ```bash
-docker compose up -d          # PostgreSQL 15 en localhost:5432 (db: vetconnect)
+docker compose up -d          # Levanta PostgreSQL 15 en localhost:5432 (db: vetconnect)
 ```
-Sin Docker: crea la base `vetconnect` y ajusta `DATABASE_URL` (ver `backend/.env.example`).
-La extensión `btree_gist` y las tablas se crean al iniciar la API; `backend/schema.sql` es el
-equivalente en SQL puro. El usuario de PostgreSQL necesita permiso para crear extensiones.
 
-## 2. Backend
+> _Sin Docker:_ Crea la base de datos `vetconnect` manualmente y configura `DATABASE_URL` en `backend/.env`. La extensión `btree_gist` y las tablas se crean automáticamente al iniciar la API.
+
+### 2. Backend
+
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
+python -m venv .venv
+source .venv/bin/activate    # En Windows: .venv\Scripts\activate
+
 pip install -r requirements.txt
 export DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/vetconnect
 export SECRET_KEY=una-clave-larga-y-aleatoria
-python seed.py                                       # usuarios y médicos iniciales
+
+python seed.py               # Crea usuarios y médicos de prueba
 uvicorn main:app --reload --port 8000
 ```
-Documentación interactiva: http://localhost:8000/docs
 
-| Usuario | Contraseña | Rol |
-|---|---|---|
-| admin@vetconnect.cl | Admin123! | ADMIN |
-| tutor@vetconnect.cl | Tutor123! | TUTOR |
-| vet@vetconnect.cl | Vet123! | VETERINARIO |
+📍 **Documentación interactiva Swagger:** [http://localhost:8000/docs](http://localhost:8000/docs)
 
-(`vet2@vetconnect.cl` se agrega para tener dos médicos en el selector.) **Cambia estas claves antes de producción.**
+#### 👥 Usuarios de prueba (Seed Data)
 
-## 3. Frontend
-Se crea el proyecto con el CLI y luego se copian los archivos de esta carpeta:
+| Usuario                   | Contraseña  | Rol           | Descripción                       |
+| ------------------------- | ----------- | ------------- | --------------------------------- |
+| `admin@vetconnect.cl`     | `Admin123!` | ADMIN         | Administrador general del sistema |
+| `tutor@vetconnect.cl`     | `Tutor123!` | TUTOR         | Cliente / Tutor de mascotas       |
+| `vet@vetconnect.cl`       | `Vet123!`   | VETERINARIO   | Médico veterinario principal      |
+| `vet2@vetconnect.cl`      | `Vet123!`   | VETERINARIO   | Segundo médico en selección       |
+| `recepcion@vetconnect.cl` | `Recep123!` | RECEPCIONISTA | Gestión de recepción y agenda     |
+
+### 3. Frontend
+
 ```bash
-# desde la raíz del proyecto (donde está /backend)
-ng new vetconnect-web --standalone --routing --style=css --ssr=false --skip-git
+# Desde la raíz del repositorio
 cd vetconnect-web
-npm install -D tailwindcss@3 postcss autoprefixer
-
-# copia los archivos entregados, sobrescribiendo los generados
-cp -r ../frontend/src/* src/
-cp ../frontend/tailwind.config.js .
-rm -f src/app/app.component.html src/app/app.component.css src/app/app.component.spec.ts
-
-ng serve                                            # http://localhost:4200
+npm install
+ng serve                                            # Disponible en http://localhost:4200
 ```
-Si tu CLI genera `app.config.ts`/`app.routes.ts` distintos, los archivos copiados los reemplazan.
-Si cambias la URL del backend, edita `src/app/api.config.ts`.
 
-## 4. Prueba de concurrencia
-Con la API levantada y el seed ejecutado:
+---
+
+## 📦 Funcionalidades e Incrementos
+
+### 📅 Agendamiento y Recepción (VET-11, VET-12)
+
+- **Gestión por Tutor:** Consulta de citas propias (`GET /appointments/my`), cancelación (`PATCH /{id}/cancel`) y reprogramación (`PATCH /{id}/reschedule`).
+- **Panel de Recepción:** Visualización de agenda diaria global (`GET /appointments/agenda`) y actualización de estados (`ARRIVED`, `COMPLETED`, `CANCELLED`).
+
+### 🩺 Ficha Clínica y Recetas PDF (VET-13, VET-14)
+
+- **Ficha Médica:** Registro y consulta de peso, antecedentes, vacunas, diagnóstico y tratamiento (`GET/PUT /medical-records/{appointment_id}`).
+- **Receta en PDF:** Generación dinámica con `fpdf2` (`GET /medical-records/{appointment_id}/pdf`) que incluye datos del paciente, médico, tutor y prescripción médica formal.
+
+### ✉️ Servicio de Notificaciones (VET-15)
+
+- **Confirmación inmediata:** Envío automático de correos en segundo plano (`BackgroundTasks`) al realizar una reserva.
+- **Recordatorio 24h:** Programación de correos previos a la cita usando la zona horaria oficial de la clínica (`America/Santiago`).
+- **Modo Demo / Producción:** Funciona sin servidor SMTP (imprimiendo en consola) o con SMTP real según las variables de entorno.
+
+---
+
+## 🧪 Pruebas y Calidad
+
+### Suite de Pruebas Automáticas (`pytest`)
+
+La suite de pruebas utiliza una base de datos PostgreSQL real (debido al soporte de `btree_gist`).
+
+```bash
+cd backend
+pytest -v
+```
+
+> **Nota:** Las pruebas crearán/usarán la base `vetconnect_test`. La variable `TEST_DATABASE_URL` debe terminar siempre en `_test` ya que la suite limpia los datos al ejecutarse.
+
+#### Cobertura de Tests (`backend/tests/`):
+
+- `test_medical_records.py`: Creación/actualización de fichas, cambio de estado a `COMPLETED` y control de acceso por roles.
+- `test_prescription_pdf.py`: Validación de la estructura y encabezados del PDF generado.
+- `test_notifications.py`: Envío de correos de confirmación, flujos SMTP y recordatorios de 24h.
+
+### Prueba de Concurrencia Manual
+
+Para verificar la protección contra reservas dobles a nivel de base de datos:
+
 ```bash
 cd backend
 python test_concurrency.py --n 5
 ```
-Lanza 5 reservas simultáneas del mismo bloque y verifica: exactamente un `201`, el resto `409`,
-y tiempo total ≤ 3 s. Elige un bloque libre cada vez, así que se puede repetir.
 
-## Notas de diseño
-- **Sin "SELECT y luego INSERT"**: esa verificación tendría una condición de carrera. Se inserta directo y se captura `IntegrityError` (SQLSTATE `23P01`).
-- **Bloques contiguos**: `tsrange` usa límites `[)`, por lo que 09:00–09:30 y 09:30–10:00 no chocan.
-- **Citas canceladas** quedan fuera de la restricción (`WHERE status = 'CONFIRMED'`) y el bloque vuelve a estar disponible.
-- **Horas**: se guardan como `TIMESTAMP` sin zona en hora de la clínica (America/Santiago).
-- **Box**: la restricción cubre al médico. Si cada box lo comparten varios médicos, se agrega una segunda `EXCLUDE` sobre `box_number` (requiere guardar el box en `appointments`).
-- **JWT en `localStorage`** cumple lo pedido, pero es accesible a scripts; para producción conviene una cookie `HttpOnly`.
+> Ejecuta 5 peticiones simultáneas sobre el mismo bloque de horario. Resultado esperado: exactamente **1 respuesta 201 Created** y **4 respuestas 409 Conflict**.
+
+---
+
+## 💡 Notas de Arquitectura
+
+- **Prevención de carreras (Race conditions):** Se evita el patrón "SELECT y luego INSERT". La reserva se inserta directamente dejando que la base de datos fuerce la restricción `EXCLUDE` y capturando la excepción `IntegrityError` (SQLSTATE `23P01`).
+- **Manejo de rangos contiguos:** Los rangos `tsrange` usan intervalos semiabiertos `[)`, permitiendo que bloques contiguos (ej. 09:00–09:30 y 09:30–10:00) coexistan sin colisión.
+- **Liberación de cupos:** Las citas con estado `CANCELLED` quedan fuera de la restricción `EXCLUDE`, dejando el bloque libre automáticamente para nuevas reservas.
+- **Zona Horaria:** Todas las fechas y horas se procesan y almacenan considerando la zona horaria de la clínica (`America/Santiago`).
