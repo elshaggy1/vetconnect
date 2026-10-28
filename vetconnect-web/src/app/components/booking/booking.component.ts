@@ -40,9 +40,18 @@ interface ModalState {
                   <div class="p-3 rounded-md border border-slate-300 bg-white transition">
                     <div class="flex justify-between items-start">
                       <span class="font-medium text-sm">{{ apt.doctor_name }}</span>
-                      <span class="text-xs text-slate-500">{{ hhmm(apt.start_time) }} - {{ hhmm(apt.end_time) }}</span>
+                      <!-- Muestra fecha y rango de hora -->
+                      <span class="text-xs text-slate-500 font-medium">
+                        {{ ymd(apt.start_time) }} &nbsp;|&nbsp; {{ hhmm(apt.start_time) }} - {{ hhmm(apt.end_time) }}
+                      </span>
                     </div>
-                    <p class="text-capitalize text-sm mt-1">{{ apt.status }}</p>
+
+                    <!-- Estado traducido a CONFIRMADO en verde cuando corresponde -->
+                    <p class="text-sm mt-1 font-semibold"
+                       [class]="apt.status === 'CONFIRMED' ? 'text-green-600' : 'text-slate-600'">
+                      {{ apt.status === 'CONFIRMED' ? 'CONFIRMADO' : apt.status }}
+                    </p>
+
                     <div class="mt-2 flex gap-2">
                       @if (apt.status === 'CONFIRMED' || apt.status === 'ARRIVED') {
                         <button
@@ -169,7 +178,11 @@ export class BookingComponent implements OnInit {
   }
 
   hhmm(iso: string): string {
-    return iso.substring(11, 16);
+    return iso ? iso.substring(11, 16) : '';
+  }
+
+  ymd(iso: string): string {
+    return iso ? iso.substring(0, 10) : '';
   }
 
   loadSlots(): void {
@@ -227,7 +240,6 @@ export class BookingComponent implements OnInit {
   }
 
   rescheduleAppointment(id: number): void {
-    // Implementar reprogramación si es necesario
     this.modal.set({
       type: 'error',
       title: 'Reprogramar',
@@ -250,7 +262,6 @@ export class BookingComponent implements OnInit {
           message: `Te esperamos el ${this.date()} a las ${this.hhmm(slot.start_time)}.`,
         });
         this.loadSlots();
-        // Recargar mis reservas después de confirmar
         this.loadMyAppointments();
       },
       error: (err) => {

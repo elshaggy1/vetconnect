@@ -27,6 +27,19 @@ async def get_medical_record(
     user: User = Depends(require_role("VETERINARIO", "ADMIN", "TUTOR", "RECEPCIONISTA")),
 ):
     """Obtiene la ficha clínica de una cita específica."""
+    appointment = await db.get(Appointment, appointment_id)
+    if appointment is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "Cita no encontrada."
+        )
+
+    # Validación de seguridad: un TUTOR solo puede ver fichas de sus propias citas
+    if user.role == "TUTOR" and appointment.tutor_id != user.id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "No tienes permiso para acceder a esta ficha médica.",
+        )
+
     medical_record = (
         await db.execute(
             select(MedicalRecord).where(MedicalRecord.appointment_id == appointment_id)
@@ -156,7 +169,7 @@ async def generate_prescription_pdf(
     pdf.set_font("Helvetica", "B", 12)
     pdf.cell(0, 8, _latin1("VETERINARIO Y TUTOR:"), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 11)
-    pdf.cell(0, 6, _latin1(f"Médico: {doctor.user.full_name} ({doctor.specialty} - Box {doctor.box_number})"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, _latin1(f"Médico: {doctor.user.full_name} ({doctor.specialty} Box {doctor.box_number})"), new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 6, _latin1(f"Tutor: {tutor.full_name} ({tutor.email})"), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 

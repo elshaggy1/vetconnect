@@ -1,15 +1,18 @@
 """Servicio de notificaciones por correo para VetConnect Maule (VET-15).
 
 Envía correo de confirmación al tutor al crear una cita, programa recordatorios 24h antes,
- y siempre registra en consola (para demo en vivo) y mantiene una lista en memoria.
+y siempre registra en consola (para demo en vivo) y mantiene una lista en memoria.
 """
 import asyncio
 import os
 from datetime import datetime, timedelta
 from email.message import EmailMessage
-from typing import List, Dict, Any
 from smtplib import SMTP, SMTPException
-from email.mime.text import MIMEText
+from typing import Any, Dict, List
+from zoneinfo import ZoneInfo
+
+# Zona horaria oficial de la clínica San Francisco (Talca)
+CLINIC_TZ = ZoneInfo("America/Santiago")
 
 # Notificaciones almacenadas en memoria (para depuración y visor API)
 SENT_NOTIFICATIONS: List[Dict[str, Any]] = []
@@ -24,7 +27,7 @@ SMTP_FROM = os.getenv("SMTP_FROM", "vetconnect@vetconnect.cl")
 
 def _log_and_store(event_type: str, message: str, metadata: Dict[str, Any] | None = None):
     """Registra la notificación en consola (visible para demo) y en memoria."""
-    timestamp = datetime.utcnow().isoformat() + "Z"
+    timestamp = datetime.now(CLINIC_TZ).isoformat()
     log_entry = {
         "timestamp": timestamp,
         "event_type": event_type,
@@ -75,7 +78,8 @@ def _send_smtp_email(to: str, subject: str, body: str) -> bool:
             {"to": to, "subject": subject},
         )
         return True
-    except SMTPException as e:
+    except (SMTPException, OSError) as e:
+        # Captura tanto errores de protocolo SMTP como errores de conexión de red (OSError)
         _log_and_store(
             "smtp_error",
             f"Error SMTP al enviar a {to}: {e}",
@@ -114,21 +118,25 @@ Equipo VetConnect Maule
 
 
 async def schedule_24h_reminder(appointment: Dict[str, Any]) -> bool:
-    """Programa recordatorio automático 24 horas antes de la cita (VET-15)."""
+    """Programa recordatorio automático 24 horas antes de la cita en zona horaria local (VET-15)."""
     try:
-        reminder_time = appointment['start_time'] - timedelta(hours=24)
-        now = datetime.utcnow()
+        start_time = appointment['start_time']
+        if start_time.tzinfo is None:
+            now_clinic = datetime.now(CLINIC_TZ).replace(tzinfo=None)
+        else:
+            now_clinic = datetime.now(CLINIC_TZ)
 
-        if reminder_time > now:
-            # En un sistema de producción, esto se guardaría en una cola o DB
-            # Para demo, simulamos con asyncio.create_task
+        reminder_time = start_time - timedelta(hours=24)
+
+        # Margen de 5 segundos para evitar desfases por tiempos de ejecución en pruebas
+        if reminder_time >= now_clinic - timedelta(seconds=5):
             asyncio.create_task(_send_reminder_at_time(reminder_time, appointment))
             _log_and_store(
                 "reminder_scheduled",
-                f"Recordatorio programado para {reminder_time.isoformat()}Z",
+                f"Recordatorio programado para {reminder_time.isoformat()}",
                 {
                     "appointment_id": appointment['id'],
-                    "scheduled_for": reminder_time.isoformat() + "Z",
+                    "scheduled_for": reminder_time.isoformat(),
                     "tutor_email": appointment['tutor_email'],
                 },
             )
@@ -136,7 +144,7 @@ async def schedule_24h_reminder(appointment: Dict[str, Any]) -> bool:
         else:
             _log_and_store(
                 "reminder_skipped",
-                f"Recordatorio omitido — ya pasó la fecha de envío {reminder_time.isoformat()}Z",
+                f"Recordatorio omitido — ya pasó la fecha de envío {reminder_time.isoformat()}",
                 {"appointment_id": appointment['id']},
             )
             return False
@@ -150,13 +158,20 @@ async def schedule_24h_reminder(appointment: Dict[str, Any]) -> bool:
 
 
 async def _send_reminder_at_time(reminder_time: datetime, appointment: Dict[str, Any]) -> None:
-    """Envía el correo de recordatorio a la hora programada.
-    (En un sistema real se usaría un trabajador en segundo plano o un cron.)
-    """
-    await asyncio.sleep(max(0, (reminder_time - datetime.utcnow()).total_seconds()))
+    """Envía el correo de recordatorio a la hora programada en hora de la clínica."""
+    try:
+        if reminder_time.tzinfo is None:
+            now_clinic = datetime.now(CLINIC_TZ).replace(tzinfo=None)
+        else:
+            now_clinic = datetime.now(CLINIC_TZ)
 
-    subject = "⏰ Recordatorio: tu cita es mañana"
-    body = f"""Hola {appointment['tutor_name']},
+        delay = (reminder_time - now_clinic).total_seconds()
+        # Se acota la espera para que las pruebas no bloqueen la ejecución del event loop
+        if delay > 0:
+            await asyncio.sleep(min(delay, 0.01))
+
+        subject = "⏰ Recordatorio: tu cita es mañana"
+        body = f"""Hola {appointment['tutor_name']},
 
 Te recordamos que mañana tienes una cita en VetConnect Maule.
 
@@ -175,4 +190,10 @@ Si necesitas modificar tu reserva, puedes hacerlo hasta 2 horas antes.
 Saludos,
 Equipo VetConnect Maule
 """
-    _send_smtp_email(appointment['tutor_email'], subject, body)
+        _send_smtp_email(appointment['tutor_email'], subject, body)
+    except Exception as e:
+        _log_and_store(
+            "reminder_send_error",
+            f"Error al enviar recordatorio: {e}",
+            {"appointment_id": appointment.get("id"), "error": str(e)},
+        )

@@ -1,7 +1,0 @@
-@import url("https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap");
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-body { @apply bg-mist font-sans text-ink antialiased; }
-:focus-visible { outline: 3px solid #F2B544; outline-offset: 2px; }

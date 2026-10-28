@@ -126,9 +126,3 @@ class MedicalRecordOut(BaseModel):
     treatment: str
     prescription: str
     updated_at: datetime
-
-
-    model_config = ConfigDict(from_attributes=True)
-    id: int
-    name: str
-    location: str
