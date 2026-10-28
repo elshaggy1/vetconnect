@@ -136,6 +136,32 @@ async def test_smtp_flow_starttls_login_send(smtp_configured):
     assert events() == ["smtp_sent"]
 
 
+class FakeSMTPSSL(FakeSMTP):
+    """Doble de smtplib.SMTP_SSL (puerto 465, TLS implícito)."""
+
+    def __init__(self, host, port, timeout, context=None):
+        super().__init__(host, port, timeout)
+        self.context = context
+
+
+async def test_port_465_uses_implicit_tls_without_starttls(smtp_configured, monkeypatch):
+    """Gmail en 465 exige SMTP_SSL; hacer starttls() ahí cierra la conexión."""
+    monkeypatch.setattr(notifications, "SMTP_PORT", 465)
+    monkeypatch.setattr(notifications, "SMTP_SSL", FakeSMTPSSL)
+
+    ok = await notifications.send_confirmation_email(
+        "camila@example.com", "Camila", appointment_data(datetime(2030, 5, 14, 10, 0))
+    )
+
+    assert ok is True
+    assert len(smtp_configured.instances) == 1  # solo se abrió la conexión SSL
+    ssl_conn = smtp_configured.instances[0]
+    assert isinstance(ssl_conn, FakeSMTPSSL) and ssl_conn.port == 465
+    assert ssl_conn.context is not None            # valida el certificado del servidor
+    assert ssl_conn.calls == ["login:bot", "send"]  # sin "starttls"
+    assert events() == ["smtp_sent"]
+
+
 async def test_smtp_error_returns_false_and_is_logged(smtp_configured):
     smtp_configured.fail_on_send = SMTPException("550 mailbox unavailable")
 
@@ -175,7 +201,7 @@ async def test_reminder_is_scheduled_24h_before_the_appointment(reminders_spy):
 
 
 async def test_reminder_is_skipped_when_send_time_already_passed(reminders_spy):
-    start = datetime.utcnow() + timedelta(hours=2)  # la cita es en 2 h: ya no hay 24 h de margen
+    start = datetime.now(CLINIC_TZ).replace(tzinfo=None) + timedelta(hours=2)  # la cita es en 2 h: ya no hay 24 h de margen
 
     ok = await notifications.schedule_24h_reminder(appointment_data(start))
 
@@ -193,11 +219,31 @@ async def test_reminder_uses_clinic_timezone_not_utc(reminders_spy):
     assert ok is True
 
 
+async def test_reminder_really_waits_until_the_scheduled_time(outbox, monkeypatch):
+    """Regresión: el recordatorio NO debe enviarse al reservar, sino 24 h antes de la cita."""
+    waits: list[float] = []
+
+    async def fake_sleep(seconds):
+        waits.append(seconds)
+        assert outbox == [], "el correo salió antes de terminar la espera"
+
+    monkeypatch.setattr(notifications.asyncio, "sleep", fake_sleep)
+    reminder_time = datetime.now(CLINIC_TZ).replace(tzinfo=None) + timedelta(hours=20)
+
+    await REAL_SEND_REMINDER(reminder_time, appointment_data(reminder_time + timedelta(hours=24)))
+
+    assert len(waits) == 1
+    assert waits[0] == pytest.approx(20 * 3600, abs=5)  # espera ~20 h completas, no 10 ms
+    assert len(outbox) == 1                             # y recién después envía el correo
+
+
 async def test_reminder_email_content(outbox):
     start = datetime(2030, 5, 14, 10, 30)
 
     # reminder_time ya pasó -> asyncio.sleep(0) y el correo sale de inmediato
-    await REAL_SEND_REMINDER(datetime.utcnow() - timedelta(seconds=1), appointment_data(start))
+    await REAL_SEND_REMINDER(
+        datetime.now(CLINIC_TZ).replace(tzinfo=None) - timedelta(seconds=1), appointment_data(start)
+    )
 
     to, subject, body = outbox[0]
     assert to == "camila@example.com"

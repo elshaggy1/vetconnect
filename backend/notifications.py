@@ -7,7 +7,8 @@ import asyncio
 import os
 from datetime import datetime, timedelta
 from email.message import EmailMessage
-from smtplib import SMTP, SMTPException
+import ssl
+from smtplib import SMTP, SMTP_SSL, SMTPException
 from typing import Any, Dict, List
 from zoneinfo import ZoneInfo
 
@@ -67,10 +68,19 @@ def _send_smtp_email(to: str, subject: str, body: str) -> bool:
         msg["Subject"] = subject
         msg.set_content(body)
 
-        with SMTP(host=SMTP_HOST, port=SMTP_PORT, timeout=10) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.send_message(msg)
+        if SMTP_PORT == 465:
+            # Puerto 465: TLS implícito (la conexión nace cifrada). Aquí NO se usa starttls().
+            with SMTP_SSL(
+                host=SMTP_HOST, port=SMTP_PORT, timeout=10, context=ssl.create_default_context()
+            ) as server:
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(msg)
+        else:
+            # Puerto 587 (por defecto): conexión en claro que se eleva con STARTTLS.
+            with SMTP(host=SMTP_HOST, port=SMTP_PORT, timeout=10) as server:
+                server.starttls()
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(msg)
 
         _log_and_store(
             "smtp_sent",
@@ -114,7 +124,7 @@ Saludos cordiales,
 Equipo VetConnect Maule
 """
 
-    return _send_smtp_email(tutor_email, subject, body)
+    return await asyncio.to_thread(_send_smtp_email, tutor_email, subject, body)
 
 
 async def schedule_24h_reminder(appointment: Dict[str, Any]) -> bool:
@@ -166,9 +176,10 @@ async def _send_reminder_at_time(reminder_time: datetime, appointment: Dict[str,
             now_clinic = datetime.now(CLINIC_TZ)
 
         delay = (reminder_time - now_clinic).total_seconds()
-        # Se acota la espera para que las pruebas no bloqueen la ejecución del event loop
+        # Espera real hasta la hora programada. Las pruebas reemplazan esta función
+        # (fixture reminders_spy), por eso no hace falta acotar la espera aquí.
         if delay > 0:
-            await asyncio.sleep(min(delay, 0.01))
+            await asyncio.sleep(delay)
 
         subject = "⏰ Recordatorio: tu cita es mañana"
         body = f"""Hola {appointment['tutor_name']},
@@ -190,7 +201,7 @@ Si necesitas modificar tu reserva, puedes hacerlo hasta 2 horas antes.
 Saludos,
 Equipo VetConnect Maule
 """
-        _send_smtp_email(appointment['tutor_email'], subject, body)
+        await asyncio.to_thread(_send_smtp_email, appointment['tutor_email'], subject, body)
     except Exception as e:
         _log_and_store(
             "reminder_send_error",
