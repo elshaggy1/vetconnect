@@ -1,17 +1,17 @@
 import { Routes } from '@angular/router';
-import { authGuard } from './guards/auth.guard';
+import { AdminComponent } from './components/admin/admin.component';
 import { BookingComponent } from './components/booking/booking.component';
 import { LoginComponent } from './components/login/login.component';
 import { ReceptionComponent } from './components/reception/reception.component';
 import { VetDashboardComponent } from './components/vet-dashboard/vet-dashboard.component';
-import { AdminComponent } from './components/admin/admin.component';
+import { authGuard, guestGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
-  { path: 'login', component: LoginComponent },
-  { path: 'reservas', component: BookingComponent, canActivate: [authGuard], data: { role: 'TUTOR' } },
-  { path: 'recepcion', component: ReceptionComponent, canActivate: [authGuard], data: { role: ['RECEPCIONISTA'] } },
-  { path: 'veterinario', component: VetDashboardComponent, canActivate: [authGuard], data: { role: 'VETERINARIO' } },
-  { path: 'admin', component: AdminComponent, canActivate: [authGuard], data: { role: 'ADMIN' } },
+  { path: 'login', component: LoginComponent, canActivate: [guestGuard] },
+  { path: 'reservas', component: BookingComponent, canActivate: [authGuard], data: { roles: ['TUTOR'] } },
+  { path: 'recepcion', component: ReceptionComponent, canActivate: [authGuard], data: { roles: ['RECEPCIONISTA', 'ADMIN'] } },
+  { path: 'veterinario', component: VetDashboardComponent, canActivate: [authGuard], data: { roles: ['VETERINARIO'] } },
+  { path: 'admin', component: AdminComponent, canActivate: [authGuard], data: { roles: ['ADMIN'] } },
   { path: '', pathMatch: 'full', redirectTo: 'reservas' },
   { path: '**', redirectTo: 'reservas' },
 ];

@@ -1,27 +1,29 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
-import { AuthService } from '../services/auth.service';
+import { AuthService, Role } from '../services/auth.service';
 
-/** Exige sesión válida y, si la ruta define data.role, que coincida.
- *  Ahora soporta route.data?.['role'] como string o arreglo de strings (ej: ['RECEPCIONISTA', 'ADMIN']). */
+/**
+ * Exige sesión vigente y que el rol esté en `data.roles` (RF-03 / RNF-02).
+ * Si el rol no corresponde, redirige a la vista de inicio de ese rol en vez de cerrar la sesión.
+ */
 export const authGuard: CanActivateFn = (route) => {
   const auth = inject(AuthService);
   const router = inject(Router);
-  const requiredRole = route.data?.['role'] as string | string[] | null;
 
-  if (!auth.isLoggedIn()) return router.createUrlTree(['/login']);
-
-  // Normalizar a arreglo para validación unificada
-  const requiredRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
-
-  // Verificar si el rol actual está en la lista de roles requeridos
-  const userRole = auth.getRole();
-  const hasValidRole = requiredRoles.includes(userRole);
-
-  if (!hasValidRole) {
+  if (!auth.isLoggedIn()) {
     auth.logout();
     return router.createUrlTree(['/login']);
   }
-
+  const allowed = (route.data?.['roles'] as Role[] | undefined) ?? [];
+  const role = auth.getRole();
+  if (allowed.length && (!role || !allowed.includes(role))) {
+    return router.parseUrl(auth.homeRoute());
+  }
   return true;
+};
+
+/** En /login: si ya hay sesión vigente, envía directo a la vista del rol. */
+export const guestGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  return auth.isLoggedIn() ? inject(Router).parseUrl(auth.homeRoute()) : true;
 };

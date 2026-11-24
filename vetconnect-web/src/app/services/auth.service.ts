@@ -5,6 +5,14 @@ import { API_URL } from '../api.config';
 
 export type Role = 'ADMIN' | 'RECEPCIONISTA' | 'VETERINARIO' | 'TUTOR';
 
+/** Vista de inicio de cada rol (RF-03). */
+export const HOME_BY_ROLE: Record<Role, string> = {
+  TUTOR: '/reservas',
+  RECEPCIONISTA: '/recepcion',
+  VETERINARIO: '/veterinario',
+  ADMIN: '/admin',
+};
+
 export interface LoginResponse {
   access_token: string;
   token_type: string;
@@ -44,6 +52,11 @@ export class AuthService {
   /** Rol actual leído del payload del JWT (null si no hay sesión válida). */
   getRole(): Role | null {
     return (this.decodePayload()?.['role'] as Role) ?? null;
+  }
+
+  homeRoute(): string {
+    const role = this.getRole();
+    return role ? HOME_BY_ROLE[role] : '/login';
   }
 
   /** Hay token y todavía no expiró. */
