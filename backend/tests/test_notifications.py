@@ -10,6 +10,7 @@ from schemas import CLINIC_TZ
 from tests.conftest import future_slot
 
 TUTOR = "tutor@vetconnect.cl"
+RECEP = "recepcion@vetconnect.cl"
 # La fixture autouse `reminders_spy` reemplaza esta función en cada test; se guarda la original.
 REAL_SEND_REMINDER = notifications._send_reminder_at_time
 
@@ -321,7 +322,19 @@ async def test_notifications_endpoint_requires_auth_and_lists_events(client, log
     assert (await client.get("/api/v1/appointments/notifications")).status_code == 401
 
     notifications._log_and_store("confirmation", "demo", {"to": "x@y.cl"})
-    r = await client.get("/api/v1/appointments/notifications", headers=await login(TUTOR))
+    r = await client.get("/api/v1/appointments/notifications", headers=await login(RECEP))
 
     assert r.status_code == 200
     assert r.json()[0]["event_type"] == "confirmation"
+
+
+@pytest.mark.integration
+async def test_tutor_only_sees_own_notifications(client, login):
+    """RNF-02: la bandeja no expone correos de otros tutores."""
+    notifications._log_and_store("confirmation", "ajena", {"to": "otro@vetconnect.cl"})
+    notifications._log_and_store("confirmation", "propia", {"to": TUTOR})
+
+    r = await client.get("/api/v1/appointments/notifications", headers=await login(TUTOR))
+
+    assert r.status_code == 200
+    assert [e["message"] for e in r.json()] == ["propia"]

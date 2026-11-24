@@ -1,7 +1,13 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { AppointmentService, Doctor, Slot, AppointmentDetail, NotificationLog } from '../../services/appointment.service';
+import {
+  AppointmentService,
+  AppointmentStatus,
+  Doctor,
+  MyAppointment,
+  Slot,
+} from '../../services/appointment.service';
 import { AuthService } from '../../services/auth.service';
 
 interface ModalState {
@@ -9,6 +15,13 @@ interface ModalState {
   title: string;
   message: string;
 }
+
+const STATUS_LABEL: Record<AppointmentStatus, string> = {
+  CONFIRMED: 'Confirmada',
+  ARRIVED: 'En la clínica',
+  COMPLETED: 'Atendida',
+  CANCELLED: 'Cancelada',
+};
 
 @Component({
   selector: 'app-booking',
@@ -24,63 +37,57 @@ interface ModalState {
     </header>
 
     <main class="mx-auto max-w-3xl p-6">
-      <h1 class="text-2xl font-bold">Reservar una hora</h1>
+      <h1 class="text-2xl font-bold">{{ rescheduling() ? 'Reprogramar mi hora' : 'Reservar una hora' }}</h1>
       <p class="mt-1 text-slate-600">Elige médico y fecha. Solo ves los bloques que están libres.</p>
 
-      <!-- Sección: Mis reservas (solo para TUTOR) -->
-      @if (auth.getRole() === 'TUTOR') {
-        <div class="mt-6 p-4 rounded-md bg-pine-soft border border-pine mb-6">
-          <h2 class="font-semibold text-sm text-pine mb-3">Mis reservas</h2>
-          @if (!loadingMyAppointments()) {
-            @if (myAppointments().length === 0) {
-              <p class="text-slate-600 text-sm">No tienes reservas activas.</p>
-            } @else {
-              <div class="space-y-2 max-h-40 overflow-y-auto">
-                @for (apt of myAppointments(); track apt.id) {
-                  <div class="p-3 rounded-md border border-slate-300 bg-white transition">
-                    <div class="flex justify-between items-start">
-                      <span class="font-medium text-sm">{{ apt.doctor_name }}</span>
-                      <!-- Muestra fecha y rango de hora -->
-                      <span class="text-xs text-slate-500 font-medium">
-                        {{ ymd(apt.start_time) }} &nbsp;|&nbsp; {{ hhmm(apt.start_time) }} - {{ hhmm(apt.end_time) }}
-                      </span>
-                    </div>
-
-                    <!-- Estado traducido a CONFIRMADO en verde cuando corresponde -->
-                    <p class="text-sm mt-1 font-semibold"
-                       [class]="apt.status === 'CONFIRMED' ? 'text-green-600' : 'text-slate-600'">
-                      {{ apt.status === 'CONFIRMED' ? 'CONFIRMADO' : apt.status }}
-                    </p>
-
-                    <div class="mt-2 flex gap-2">
-                      @if (apt.status === 'CONFIRMED' || apt.status === 'ARRIVED') {
-                        <button
-                          type="button"
-                          (click)="cancelAppointment(apt.id)"
-                          class="text-red-600 text-sm hover:underline">Cancelar</button>
-                        <button
-                          type="button"
-                          (click)="rescheduleAppointment(apt.id)"
-                          class="text-amber-vet text-sm hover:underline">Reprogramar</button>
-                      }
-                    </div>
+      <section class="mt-6 rounded-md border border-pine bg-pine-soft p-4">
+        <h2 class="mb-3 text-sm font-semibold text-pine">Mis reservas</h2>
+        @if (loadingMine()) {
+          <p class="text-sm text-slate-600">Cargando…</p>
+        } @else if (myAppointments().length === 0) {
+          <p class="text-sm text-slate-600">Aún no tienes reservas.</p>
+        } @else {
+          <ul class="max-h-56 space-y-2 overflow-y-auto">
+            @for (apt of myAppointments(); track apt.id) {
+              <li class="rounded-md border border-slate-300 bg-white p-3">
+                <div class="flex items-start justify-between gap-2">
+                  <span class="text-sm font-medium">{{ apt.doctor_name }} · box {{ apt.box_number }}</span>
+                  <span class="text-xs font-medium text-slate-500">
+                    {{ ymd(apt.start_time) }} | {{ hhmm(apt.start_time) }}–{{ hhmm(apt.end_time) }}
+                  </span>
+                </div>
+                <p class="mt-1 text-sm font-semibold" [class]="apt.status === 'CONFIRMED' ? 'text-green-700' : 'text-slate-600'">
+                  {{ statusLabel[apt.status] }}
+                </p>
+                @if (apt.status === 'CONFIRMED') {
+                  <div class="mt-2 flex gap-4">
+                    <button type="button" (click)="cancelAppointment(apt)" class="text-sm text-red-700 hover:underline">Cancelar</button>
+                    <button type="button" (click)="startReschedule(apt)" class="text-sm text-pine hover:underline">Reprogramar</button>
                   </div>
                 }
-              </div>
+              </li>
             }
-          } @else {
-            <p class="text-slate-600 text-sm">Cargando…</p>
-          }
+          </ul>
+        }
+      </section>
+
+      @if (rescheduling(); as r) {
+        <div role="status" class="mt-6 flex items-center justify-between rounded-md border border-amber-vet bg-amber-50 p-4 text-sm">
+          <span>
+            Reprogramando la cita del <strong>{{ ymd(r.start_time) }} a las {{ hhmm(r.start_time) }}</strong>
+            con {{ r.doctor_name }}. Elige un nuevo bloque.
+          </span>
+          <button type="button" (click)="stopReschedule()" class="ml-4 shrink-0 font-medium text-slate-700 underline">Volver</button>
         </div>
       }
 
       <div class="mt-6 grid gap-4 sm:grid-cols-2">
         <div>
           <label for="doctor" class="mb-1 block text-sm font-medium">Médico veterinario</label>
-          <select id="doctor" [ngModel]="doctorId()" (ngModelChange)="onDoctorChange($event)"
-                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5">
+          <select id="doctor" [ngModel]="doctorId()" (ngModelChange)="onDoctorChange($event)" [disabled]="!!rescheduling()"
+                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 disabled:bg-slate-100">
             <option [ngValue]="null" disabled>Selecciona un médico</option>
-            @for (d of doctors(); track d.id) {
+            @for (d of activeDoctors(); track d.id) {
               <option [ngValue]="d.id">{{ d.full_name }} · {{ d.specialty }} (box {{ d.box_number }})</option>
             }
           </select>
@@ -118,7 +125,7 @@ interface ModalState {
 
       <button type="button" (click)="confirm()" [disabled]="!selected() || submitting()"
               class="mt-8 w-full rounded-md bg-amber-vet px-4 py-3 font-semibold text-ink transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
-        {{ submitting() ? 'Reservando…' : 'Confirmar reserva' }}
+        {{ submitting() ? 'Guardando…' : rescheduling() ? 'Confirmar nuevo horario' : 'Confirmar reserva' }}
       </button>
     </main>
 
@@ -143,8 +150,10 @@ export class BookingComponent implements OnInit {
   private router = inject(Router);
   auth = inject(AuthService);
 
+  readonly statusLabel = STATUS_LABEL;
   today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD en hora local
   doctors = signal<Doctor[]>([]);
+  activeDoctors = computed(() => this.doctors().filter((d) => d.is_active));
   doctorId = signal<number | null>(null);
   date = signal<string>(this.today);
   slots = signal<Slot[]>([]);
@@ -152,18 +161,19 @@ export class BookingComponent implements OnInit {
   loadingSlots = signal(false);
   submitting = signal(false);
   modal = signal<ModalState | null>(null);
-  loadingMyAppointments = signal(false);
-  myAppointments = signal<AppointmentDetail[]>([]);
+  loadingMine = signal(false);
+  myAppointments = signal<MyAppointment[]>([]);
+  rescheduling = signal<MyAppointment | null>(null);
 
   ngOnInit(): void {
     this.api.getDoctors().subscribe({
       next: (list) => {
         this.doctors.set(list);
-        if (list.length) this.onDoctorChange(list[0].id);
+        const first = this.activeDoctors()[0];
+        if (first) this.onDoctorChange(first.id);
       },
-      error: (e) => e.status === 401 && this.logout(),
+      error: () => this.showError('Sin conexión', 'No pudimos cargar los médicos. Intenta de nuevo.'),
     });
-    // Cargar reservas del tutor al iniciar
     this.loadMyAppointments();
   }
 
@@ -203,87 +213,86 @@ export class BookingComponent implements OnInit {
     });
   }
 
-  // Cargar mis reservas del tutor
   loadMyAppointments(): void {
-    if (this.auth.getRole() !== 'TUTOR') return;
-    this.loadingMyAppointments.set(true);
+    this.loadingMine.set(true);
     this.api.getMyAppointments().subscribe({
-      next: (appointments) => {
-        this.myAppointments.set(appointments);
-        this.loadingMyAppointments.set(false);
-      },
-      error: () => {
-        this.myAppointments.set([]);
-        this.loadingMyAppointments.set(false);
-      },
-    });
-  }
-
-  cancelAppointment(id: number): void {
-    this.api.cancelAppointment(id).subscribe({
-      next: () => {
-        this.modal.set({
-          type: 'success',
-          title: 'Reserva cancelada',
-          message: 'La cita ha sido cancelada exitosamente.',
-        });
-        this.loadMyAppointments();
+      next: (list) => {
+        this.myAppointments.set(list);
+        this.loadingMine.set(false);
       },
       error: (err) => {
-        this.modal.set({
-          type: 'error',
-          title: 'Error al cancelar',
-          message: err.error?.detail ?? 'Ocurrió un error inesperado.',
-        });
+        this.loadingMine.set(false);
+        if (err.status === 401) this.logout();
       },
     });
   }
 
-  rescheduleAppointment(id: number): void {
-    this.modal.set({
-      type: 'error',
-      title: 'Reprogramar',
-      message: 'La funcionalidad de reprogramación estará disponible pronto.',
+  cancelAppointment(apt: MyAppointment): void {
+    if (!confirm(`¿Cancelar tu hora del ${this.ymd(apt.start_time)} a las ${this.hhmm(apt.start_time)}?`)) return;
+    this.api.cancelAppointment(apt.id).subscribe({
+      next: () => {
+        this.modal.set({ type: 'success', title: 'Reserva cancelada', message: 'El bloque quedó libre para otro paciente.' });
+        if (this.rescheduling()?.id === apt.id) this.stopReschedule();
+        this.loadMyAppointments();
+        this.loadSlots();
+      },
+      error: (err) => this.showError('No se pudo cancelar', err.error?.detail),
     });
+  }
+
+  /** VET-11: entra en modo reprogramación con el médico de la cita fijo. */
+  startReschedule(apt: MyAppointment): void {
+    this.rescheduling.set(apt);
+    this.date.set(this.ymd(apt.start_time) < this.today ? this.today : this.ymd(apt.start_time));
+    this.onDoctorChange(apt.doctor_id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  stopReschedule(): void {
+    this.rescheduling.set(null);
+    this.loadSlots();
   }
 
   confirm(): void {
     const slot = this.selected();
     const id = this.doctorId();
     if (!slot || !id) return;
-
+    const target = this.rescheduling();
     this.submitting.set(true);
-    this.api.reserve(id, slot).subscribe({
+
+    const request$ = target ? this.api.rescheduleAppointment(target.id, slot) : this.api.reserve(id, slot);
+    request$.subscribe({
       next: () => {
         this.submitting.set(false);
         this.modal.set({
           type: 'success',
-          title: 'Reserva confirmada',
-          message: `Te esperamos el ${this.date()} a las ${this.hhmm(slot.start_time)}.`,
+          title: target ? 'Hora reprogramada' : 'Reserva confirmada',
+          message: `Te esperamos el ${this.date()} a las ${this.hhmm(slot.start_time)}. Te enviamos la confirmación por correo.`,
         });
+        this.rescheduling.set(null);
         this.loadSlots();
         this.loadMyAppointments();
       },
       error: (err) => {
         this.submitting.set(false);
         if (err.status === 409) {
-          this.modal.set({
-            type: 'error',
-            title: 'Esa hora ya fue tomada',
-            message: 'Otra persona reservó este bloque hace un momento. Actualizamos los horarios para que elijas otro.',
-          });
+          this.showError(
+            'Esa hora ya fue tomada',
+            'Otra persona reservó este bloque hace un momento. Actualizamos los horarios para que elijas otro.',
+          );
           this.loadSlots();
         } else if (err.status === 401) {
           this.logout();
         } else {
-          this.modal.set({
-            type: 'error',
-            title: 'No pudimos reservar',
-            message: err.error?.detail ?? 'Ocurrió un error inesperado. Intenta de nuevo.',
-          });
+          this.showError('No pudimos guardar', err.error?.detail);
         }
       },
     });
+  }
+
+  private showError(title: string, detail?: unknown): void {
+    const message = typeof detail === 'string' ? detail : 'Ocurrió un error inesperado. Intenta de nuevo.';
+    this.modal.set({ type: 'error', title, message });
   }
 
   logout(): void {
