@@ -1,12 +1,41 @@
-# PostgreSQL 15 para desarrollo local:  docker compose up -d
+# Desarrollo:   docker compose up -d db            (solo PostgreSQL 15 en localhost:5432)
+# Producción:   docker compose --profile prod up -d --build   (BD + API + web en http://localhost:8080)
 services:
   db:
     image: postgres:15
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: vetconnect
     ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vetconnect"]
+      interval: 5s
+      retries: 10
+
+  api:
+    profiles: [prod]
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/vetconnect
+      CORS_ORIGINS: http://localhost:8080
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      retries: 5
+    restart: unless-stopped
+
+  web:
+    profiles: [prod]
+    build: ./vetconnect-web
+    ports: ["8080:80"]
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+
 volumes:
   pgdata:

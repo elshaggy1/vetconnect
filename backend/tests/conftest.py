@@ -35,6 +35,7 @@ if not urlparse(TEST_DATABASE_URL).path.rstrip("/").endswith("_test"):
 # Antes de importar la app, para que ningún módulo apunte por error a la BD de desarrollo.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["SECRET_KEY"] = "test-secret"
+os.environ["VETCONNECT_SKIP_DOTENV"] = "1"  # nunca cargar backend/.env (credenciales SMTP reales)
 for _var in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"):
     os.environ.pop(_var, None)  # modo demo: nunca se envían correos reales
 
