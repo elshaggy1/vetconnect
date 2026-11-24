@@ -1,3 +1,4 @@
+"""Ficha clínica digital (VET-13) y receta en PDF (VET-14)."""
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -112,22 +113,24 @@ async def generate_prescription_pdf(
     user: User = Depends(require_role("VETERINARIO", "TUTOR", "ADMIN", "RECEPCIONISTA")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Genera el PDF de la receta médica veterinaria con fpdf2."""
+    """Genera el PDF de la receta médica veterinaria con fpdf2 (VET-14)."""
+    appointment = await db.get(Appointment, appointment_id)
+    if appointment is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cita no encontrada.")
+    # RNF-02: un TUTOR solo puede descargar la receta de sus propias citas.
+    if user.role == "TUTOR" and appointment.tutor_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No tienes permiso para acceder a esta receta.")
+
     medical_record = (
         await db.execute(
             select(MedicalRecord).where(MedicalRecord.appointment_id == appointment_id)
         )
     ).scalar_one_or_none()
-
     if medical_record is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
             "Primero debes guardar la ficha clínica antes de emitir el PDF.",
         )
-
-    appointment = await db.get(Appointment, appointment_id)
-    if appointment is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cita no encontrada.")
 
     doctor = (
         await db.execute(select(Doctor).where(Doctor.id == appointment.doctor_id))

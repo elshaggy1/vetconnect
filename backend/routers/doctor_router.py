@@ -1,149 +1,104 @@
+"""Gestión de médicos, horarios y boxes (VET-07). Crear/editar exige rol ADMIN (RNF-02)."""
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from auth import hash_password
+from auth import hash_password, require_role
 from database import get_db
 from models import Doctor, User
-from schemas import DoctorOut, DoctorCreate, DoctorUpdate
+from schemas import DoctorCreate, DoctorOut, DoctorUpdate
 
 router = APIRouter(prefix="/api/v1/doctors", tags=["doctors"])
 
+BOX_IN_USE = "El número de box ya está en uso por otro médico activo."
 
-@router.post("", response_model=DoctorOut, status_code=status.HTTP_201_CREATED)
-async def create_doctor(data: DoctorCreate, db: AsyncSession = Depends(get_db)):
-    """Crear un nuevo médico con su usuario asociado.
 
-    Valida que el box_number no esté siendo usado por otro médico activo.
-    """
-    # Validar que el box_number no esté en uso por otro médico activo
-    result = await db.execute(
-        select(Doctor).where(Doctor.box_number == data.box_number, Doctor.is_active.is_(True))
-    )
-    existing_doctor = result.scalar_one_or_none()
-    if existing_doctor:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El número de box ya está en uso por otro médico activo.",
-        )
-
-    # Verificar si el correo ya existe en users
-    result = await db.execute(select(User).where(User.email == data.email))
-    existing_user = result.scalar_one_or_none()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ya existe un usuario con ese correo electrónico.",
-        )
-
-    # Crear el usuario con contraseña hasheada
-    new_user = User(
-        email=data.email,
-        full_name=data.full_name,
-        role="VETERINARIO",
-        password_hash=hash_password(data.password),
-    )
-    db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
-
-    # Crear el médico vinculado al usuario
-    new_doctor = Doctor(
-        user_id=new_user.id,
-        specialty=data.specialty,
-        box_number=data.box_number,
-        is_active=data.is_active,
-    )
-    db.add(new_doctor)
-    await db.commit()
-    await db.refresh(new_doctor)
-
-    # Retornar el objeto DoctorOut con los datos del usuario relacionado
+def _to_out(doctor: Doctor, user: User) -> DoctorOut:
     return DoctorOut(
-        id=new_doctor.id,
-        full_name=new_user.full_name,
-        specialty=new_doctor.specialty,
-        box_number=new_doctor.box_number,
+        id=doctor.id,
+        full_name=user.full_name,
+        email=user.email,
+        specialty=doctor.specialty,
+        box_number=doctor.box_number,
+        is_active=doctor.is_active,
+        phone=user.phone or "",
     )
+
+
+async def _box_taken(db: AsyncSession, box_number: int, exclude_id: int | None = None) -> bool:
+    query = select(Doctor.id).where(Doctor.box_number == box_number, Doctor.is_active.is_(True))
+    if exclude_id is not None:
+        query = query.where(Doctor.id != exclude_id)
+    return (await db.execute(query)).first() is not None
 
 
 @router.get("", response_model=list[DoctorOut])
 async def list_doctors(db: AsyncSession = Depends(get_db)):
-    """Listar médicos (activos e inactivos) con teléfono."""
-    rows = (
-        (await db.execute(
-            select(Doctor, User)
-            .join(User, Doctor.user_id == User.id)
-            .order_by(Doctor.id)
-        ))
-        .unique()
+    """Lista pública de médicos (activos e inactivos); la usa la vista de reservas."""
+    rows = (await db.execute(select(Doctor).order_by(Doctor.id))).unique().scalars().all()
+    return [_to_out(d, d.user) for d in rows]
+
+
+@router.post("", response_model=DoctorOut, status_code=status.HTTP_201_CREATED)
+async def create_doctor(
+    data: DoctorCreate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_role("ADMIN")),
+):
+    """Crea un médico con su usuario VETERINARIO. El box no puede estar ocupado por otro activo."""
+    if data.is_active and await _box_taken(db, data.box_number):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, BOX_IN_USE)
+    if (await db.execute(select(User.id).where(User.email == data.email))).first():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ya existe un usuario con ese correo electrónico.")
+
+    user = User(
+        email=data.email,
+        full_name=data.full_name,
+        role="VETERINARIO",
+        phone=data.phone or None,
+        password_hash=hash_password(data.password),
     )
-    doctors = []
-    for doctor, user in rows:
-        doctors.append(
-            DoctorOut(
-                id=doctor.id,
-                full_name=user.full_name,
-                specialty=doctor.specialty,
-                box_number=doctor.box_number,
-                is_active=doctor.is_active,
-                phone=user.phone
-            )
-        )
-    return doctors
+    db.add(user)
+    await db.flush()
+    doctor = Doctor(
+        user_id=user.id,
+        specialty=data.specialty,
+        box_number=data.box_number,
+        is_active=data.is_active,
+    )
+    db.add(doctor)
+    await db.commit()
+    return _to_out(doctor, user)
 
 
 @router.put("/{doctor_id}", response_model=DoctorOut)
-async def update_doctor(doctor_id: int, data: DoctorUpdate, db: AsyncSession = Depends(get_db)):
-    """Actualizar un médico existente por ID."""
-    # Buscar el médico existente
-    result = await db.execute(select(Doctor).where(Doctor.id == doctor_id))
-    existing_doctor = result.scalar_one_or_none()
-    if not existing_doctor:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Médico no encontrado.",
-        )
+async def update_doctor(
+    doctor_id: int,
+    data: DoctorUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_role("ADMIN")),
+):
+    """Actualiza datos del médico; solo cambia los campos enviados."""
+    doctor = (await db.execute(select(Doctor).where(Doctor.id == doctor_id))).unique().scalar_one_or_none()
+    if doctor is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Médico no encontrado.")
 
-    # Validar que el box_number no esté ocupado por otro médico activo (si se cambia)
-    if data.box_number is not None and data.box_number != existing_doctor.box_number:
-        result = await db.execute(
-            select(Doctor).where(Doctor.box_number == data.box_number, Doctor.is_active.is_(True), Doctor.id != doctor_id)
-        )
-        existing_box = result.scalar_one_or_none()
-        if existing_box:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El número de box ya está en uso por otro médico activo.",
-            )
+    new_box = data.box_number if data.box_number is not None else doctor.box_number
+    will_be_active = data.is_active if data.is_active is not None else doctor.is_active
+    if will_be_active and await _box_taken(db, new_box, exclude_id=doctor_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, BOX_IN_USE)
 
-    # Actualizar datos en la tabla doctors
-    if data.full_name is not None:
-        existing_doctor.user.full_name = data.full_name
-    if data.specialty is not None:
-        existing_doctor.specialty = data.specialty
-    if data.box_number is not None:
-        existing_doctor.box_number = data.box_number
-    if data.is_active is not None:
-        existing_doctor.is_active = data.is_active
+    user = doctor.user
+    if data.full_name:
+        user.full_name = data.full_name
+    if data.phone is not None:
+        user.phone = data.phone or None
+    if data.password:
+        user.password_hash = hash_password(data.password)
+    if data.specialty:
+        doctor.specialty = data.specialty
+    doctor.box_number = new_box
+    doctor.is_active = will_be_active
 
-    db.add(existing_doctor)
     await db.commit()
-    await db.refresh(existing_doctor)
-
-    # Actualizar datos en la tabla users si se proporcionó nueva contraseña
-    if data.password is not None:
-        user_result = await db.execute(select(User).where(User.id == existing_doctor.user_id))
-        user = user_result.scalar_one_or_none()
-        if user:
-            user.password_hash = hash_password(data.password)
-            db.add(user)
-            await db.commit()
-
-    # Retornar el doctor actualizado
-    return DoctorOut(
-        id=existing_doctor.id,
-        full_name=existing_doctor.user.full_name,
-        specialty=existing_doctor.specialty,
-        box_number=existing_doctor.box_number,
-    )
+    return _to_out(doctor, user)
