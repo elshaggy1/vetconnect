@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 import models  # noqa: F401 (registra las tablas en Base.metadata)
 from database import Base, engine
-from routers import appointment_router, auth_router, doctor_router, medical_record_router
+from routers import appointment_router, auth_router, doctor_router, medical_record_router, stats_router
 
 
 @asynccontextmanager
@@ -45,6 +45,7 @@ app.include_router(auth_router.router)
 app.include_router(doctor_router.router)
 app.include_router(appointment_router.router)
 app.include_router(medical_record_router.router)
+app.include_router(stats_router.router)
 
 
 @app.get("/health", tags=["health"])

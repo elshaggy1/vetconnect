@@ -1,401 +1,306 @@
-import { Component, inject, signal } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { CommonModule } from '@angular/common';
-import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { Component, OnInit, inject, signal } from '@angular/core';
+import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
+import { AdminService, DashboardStats } from '../../services/admin.service';
+import { Doctor } from '../../services/appointment.service';
 import { AuthService } from '../../services/auth.service';
-import { AdminService } from '../../services/admin.service';
-import { Doctor, DoctorList } from '../../services/admin.service';
+
+function isoDaysAgo(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toLocaleDateString('en-CA');
+}
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule],
+  imports: [FormsModule, ReactiveFormsModule],
   selector: 'app-admin',
   template: `
     <section class="min-h-screen bg-pine-soft p-6">
-      <div class="max-w-6xl mx-auto">
-        <!-- Header -->
-        <header class="mb-8 flex justify-between items-center">
+      <div class="mx-auto max-w-6xl space-y-8">
+        <header class="flex items-center justify-between">
           <div>
-            <h2>{{ showEditMode() ? 'Editar Médico' : 'Panel de Administración' }}</h2>
-            <p class="text-slate-600 mt-1">Clínica Veterinaria San Francisco - Talca</p>
+            <h2 class="text-3xl font-bold text-pine">Panel de Administración</h2>
+            <p class="mt-1 text-slate-600">Clínica Veterinaria San Francisco · Talca</p>
           </div>
-
-          <!-- Botón de Cerrar Sesión -->
-          <button
-            (click)="logout()"
-            class="px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-md shadow-sm hover:bg-red-50 transition"
-          >
-            Cerrar Sesión
+          <button (click)="logout()"
+                  class="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 shadow-sm hover:bg-red-50">
+            Cerrar sesión
           </button>
         </header>
 
-        <!-- Lista de médicos -->
-        <div class="card mb-8">
-          <h3 class="font-semibold text-pine mb-4">Médicos Registrados</h3>
+        <!-- VET-16: indicadores para el director -->
+        <div class="rounded-lg bg-white p-6 shadow-sm">
+          <div class="flex flex-wrap items-end justify-between gap-4">
+            <h3 class="text-lg font-semibold text-pine">Indicadores de atención</h3>
+            <div class="flex flex-wrap items-end gap-3 text-sm">
+              <label>Desde
+                <input type="date" [(ngModel)]="dateFrom" class="ml-1 rounded-md border border-slate-300 px-2 py-1.5" />
+              </label>
+              <label>Hasta
+                <input type="date" [(ngModel)]="dateTo" class="ml-1 rounded-md border border-slate-300 px-2 py-1.5" />
+              </label>
+              <button (click)="loadStats()" class="rounded-md bg-pine px-3 py-1.5 font-medium text-white hover:bg-pine-dark">
+                Actualizar
+              </button>
+            </div>
+          </div>
+
+          @if (statsError()) {
+            <p class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{{ statsError() }}</p>
+          } @else if (stats(); as s) {
+            <div class="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <div class="rounded-md border border-slate-200 p-4">
+                <p class="text-sm text-slate-500">Citas en el periodo</p>
+                <p class="text-3xl font-bold">{{ s.total }}</p>
+              </div>
+              <div class="rounded-md border border-slate-200 p-4">
+                <p class="text-sm text-slate-500">Atendidas</p>
+                <p class="text-3xl font-bold text-green-700">{{ s.attended }}</p>
+              </div>
+              <div class="rounded-md border border-slate-200 p-4">
+                <p class="text-sm text-slate-500">Inasistencia (no-show)</p>
+                <p class="text-3xl font-bold" [class]="s.no_show_rate_pct > 15 ? 'text-red-700' : 'text-ink'">
+                  {{ s.no_show_rate_pct }}%
+                </p>
+                <p class="text-xs text-slate-500">{{ s.no_show }} citas sin llegada · meta ≤ 15%</p>
+              </div>
+              <div class="rounded-md border border-slate-200 p-4">
+                <p class="text-sm text-slate-500">Cancelaciones</p>
+                <p class="text-3xl font-bold">{{ s.cancellation_rate_pct }}%</p>
+                <p class="text-xs text-slate-500">{{ s.by_status.CANCELLED }} canceladas a tiempo</p>
+              </div>
+            </div>
+
+            <h4 class="mb-2 mt-6 text-sm font-semibold text-slate-700">Ocupación de boxes</h4>
+            <div class="space-y-3">
+              @for (o of s.occupancy; track o.doctor_id) {
+                <div>
+                  <div class="flex justify-between text-sm">
+                    <span>Box {{ o.box_number }} · {{ o.doctor_name }}</span>
+                    <span class="font-medium">{{ o.occupancy_pct }}% ({{ o.booked_slots }}/{{ o.available_slots }} bloques)</span>
+                  </div>
+                  <div class="mt-1 h-2.5 w-full rounded-full bg-slate-100" role="progressbar"
+                       [attr.aria-valuenow]="o.occupancy_pct" aria-valuemin="0" aria-valuemax="100">
+                    <div class="h-2.5 rounded-full bg-pine" [style.width.%]="o.occupancy_pct > 100 ? 100 : o.occupancy_pct"></div>
+                  </div>
+                </div>
+              } @empty {
+                <p class="text-sm text-slate-500">Sin médicos activos.</p>
+              }
+            </div>
+          } @else {
+            <p class="mt-4 text-sm text-slate-500">Cargando indicadores…</p>
+          }
+        </div>
+
+        <!-- VET-07: médicos -->
+        <div class="rounded-lg bg-white p-6 shadow-sm">
+          <h3 class="mb-4 text-lg font-semibold text-pine">Médicos registrados</h3>
           <div class="overflow-x-auto">
-            <table class="w-full table-fixed border-collapse border-border">
+            <table class="w-full border-collapse text-sm">
               <thead>
-                <tr class="bg-pine/10 text-pine text-sm">
+                <tr class="bg-pine/10 text-left text-pine">
                   <th class="border p-2">Nombre</th>
+                  <th class="border p-2">Correo</th>
                   <th class="border p-2">Especialidad</th>
-                  <th class="border p-2">Número de Box</th>
+                  <th class="border p-2">Box</th>
                   <th class="border p-2">Teléfono</th>
                   <th class="border p-2">Estado</th>
                   <th class="border p-2 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                @for (doc of doctorsList(); track doc.id) {
-                  <tr class="text-sm border-b">
+                @for (doc of doctors(); track doc.id) {
+                  <tr [class]="editingId() === doc.id ? 'bg-amber-50' : ''">
                     <td class="border p-2">{{ doc.full_name }}</td>
-                    <td class="border p-2">{{ doc.specialty || '-' }}</td>
+                    <td class="border p-2">{{ doc.email }}</td>
+                    <td class="border p-2">{{ doc.specialty }}</td>
                     <td class="border p-2">{{ doc.box_number }}</td>
                     <td class="border p-2">{{ doc.phone || '-' }}</td>
-                    <td class="border p-2">
-                      {{ doc.is_active ? 'Activo' : 'Inactivo' }}
-                    </td>
+                    <td class="border p-2">{{ doc.is_active ? 'Activo' : 'Inactivo' }}</td>
                     <td class="border p-2 text-center">
-                      <button
-                        (click)="editDoctor(doc.id)"
-                        class="px-2 py-1 text-sm text-blue-600 underline hover:text-blue-800"
-                      >
-                        Editar
-                      </button>
+                      <button (click)="edit(doc)" class="text-pine underline hover:text-pine-dark">Editar</button>
                     </td>
                   </tr>
-                }
-                @empty {
-                  <tr class="text-sm">
-                    <td class="border p-2 colspan-5 text-center text-slate-500">No hay médicos registrados</td>
-                  </tr>
+                } @empty {
+                  <tr><td colspan="7" class="border p-2 text-center text-slate-500">No hay médicos registrados</td></tr>
                 }
               </tbody>
             </table>
           </div>
         </div>
 
-        <!-- Sección: Formulario de Médico -->
-        <div class="card mb-8">
-          <h3 class="font-semibold text-pine mb-4">{{ showEditMode() ? 'Editar Médico' : 'Registrar Nuevo Médico' }}</h3>
-          <form
-            [formGroup]="doctorForm"
-            (ngSubmit)="onSubmitDoctor()"
-            class="space-y-4"
-            novalidate
-          >
-            <div>
-              <label for="doctorName" class="block text-sm font-medium text-slate-700 mb-1">
-                Nombre completo
-              </label>
-              <input
-                id="doctorName"
-                type="text"
-                formControlName="full_name"
-                class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 focus-border-pine"
-                required
-              />
-              @if (doctorForm.get('full_name')?.touched && doctorForm.get('full_name')?.invalid) {
-                <p class="mt-1 text-sm text-red-700">El nombre es obligatorio.</p>
-              }
-            </div>
+        <div class="rounded-lg bg-white p-6 shadow-sm">
+          <h3 class="mb-4 text-lg font-semibold text-pine">{{ editingId() ? 'Editar médico' : 'Registrar nuevo médico' }}</h3>
 
-            <div>
-              <label for="doctorSpecialty" class="block text-sm font-medium text-slate-700 mb-1">
-                Especialidad
-              </label>
-              <input
-                id="doctorSpecialty"
-                type="text"
-                formControlName="specialty"
-                class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 focus-border-pine"
-                required
-              />
-              @if (doctorForm.get('specialty')?.touched && doctorForm.get('specialty')?.invalid) {
-                <p class="mt-1 text-sm text-red-700">La especialidad es obligatoria.</p>
-              }
-            </div>
+          @if (feedback(); as f) {
+            <p role="alert" class="mb-4 rounded-md px-3 py-2 text-sm"
+               [class]="f.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'">{{ f.text }}</p>
+          }
 
+          <form [formGroup]="form" (ngSubmit)="submit()" class="grid gap-4 sm:grid-cols-2" novalidate>
             <div>
-              <label for="doctorEmail" class="block text-sm font-medium text-slate-700 mb-1">
-                Correo electrónico
-              </label>
-              <input
-                id="doctorEmail"
-                type="email"
-                formControlName="email"
-                class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 focus-border-pine"
-                required
-                email
-              />
-              @if (doctorForm.get('email')?.touched && doctorForm.get('email')?.invalid) {
-                <p class="mt-1 text-sm text-red-700">
-                  {{ doctorForm.get('email')?.hasError('required') ? 'El correo es obligatorio.' : 'Revisa el formato del correo.' }}
-                </p>
-              }
+              <label for="fullName" class="mb-1 block text-sm font-medium">Nombre completo</label>
+              <input id="fullName" formControlName="full_name" class="w-full rounded-md border border-slate-300 px-3 py-2.5" />
+              @if (invalid('full_name')) { <p class="mt-1 text-sm text-red-700">Mínimo 3 caracteres.</p> }
             </div>
-
             <div>
-              <label for="doctorBox" class="block text-sm font-medium text-slate-700 mb-1">
-                Número de box
-              </label>
-              <input
-                id="doctorBox"
-                type="number"
-                formControlName="box_number"
-                class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 focus-border-pine"
-                required
-              />
-              @if (doctorForm.get('box_number')?.touched && doctorForm.get('box_number')?.invalid) {
-                <p class="mt-1 text-sm text-red-700">El número de box es obligatorio.</p>
-              }
+              <label for="specialty" class="mb-1 block text-sm font-medium">Especialidad</label>
+              <input id="specialty" formControlName="specialty" class="w-full rounded-md border border-slate-300 px-3 py-2.5" />
+              @if (invalid('specialty')) { <p class="mt-1 text-sm text-red-700">La especialidad es obligatoria.</p> }
             </div>
-
             <div>
-              <label for="doctorPhone" class="block text-sm font-medium text-slate-700 mb-1">
-                Teléfono
-              </label>
-              <input
-                id="doctorPhone"
-                type="text"
-                formControlName="phone"
-                class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 focus-border-pine"
-              />
-              @if (doctorForm.get('phone')?.touched && doctorForm.get('phone')?.invalid) {
-                <p class="mt-1 text-sm text-red-700">El teléfono es obligatorio.</p>
-              }
+              <label for="email" class="mb-1 block text-sm font-medium">Correo electrónico</label>
+              <input id="email" type="email" formControlName="email"
+                     class="w-full rounded-md border border-slate-300 px-3 py-2.5 disabled:bg-slate-100" />
+              @if (invalid('email')) { <p class="mt-1 text-sm text-red-700">Ingresa un correo válido.</p> }
             </div>
-
             <div>
-              <label for="doctorActive" class="block text-sm font-medium text-slate-700 mb-1">
-                Disponibilidad (is_active)
-              </label>
-              <select
-                id="doctorActive"
-                formControlName="is_active"
-                class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 focus-border-pine"
-                required
-              >
-                <option value="true">Activo</option>
-                <option value="false">Inactivo</option>
+              <label for="box" class="mb-1 block text-sm font-medium">Número de box</label>
+              <input id="box" type="number" min="1" formControlName="box_number" class="w-full rounded-md border border-slate-300 px-3 py-2.5" />
+              @if (invalid('box_number')) { <p class="mt-1 text-sm text-red-700">Ingresa un box válido (1 o más).</p> }
+            </div>
+            <div>
+              <label for="phone" class="mb-1 block text-sm font-medium">Teléfono</label>
+              <input id="phone" formControlName="phone" class="w-full rounded-md border border-slate-300 px-3 py-2.5" />
+            </div>
+            <div>
+              <label for="active" class="mb-1 block text-sm font-medium">Disponibilidad</label>
+              <select id="active" formControlName="is_active" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5">
+                <option [ngValue]="true">Activo</option>
+                <option [ngValue]="false">Inactivo</option>
               </select>
             </div>
-
             <div>
-              <label for="doctorPassword" class="block text-sm font-medium text-slate-700 mb-1">
-                Contraseña
+              <label for="password" class="mb-1 block text-sm font-medium">
+                Contraseña {{ editingId() ? '(dejar vacío para mantener la actual)' : '' }}
               </label>
-              <input
-                id="doctorPassword"
-                type="password"
-                formControlName="password"
-                class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 focus-border-pine"
-                required
-              />
-              @if (doctorForm.get('password')?.touched && doctorForm.get('password')?.invalid) {
-                <p class="mt-1 text-sm text-red-700">La contraseña es obligatoria.</p>
+              <input id="password" type="password" formControlName="password" autocomplete="new-password"
+                     class="w-full rounded-md border border-slate-300 px-3 py-2.5" />
+              @if (invalid('password')) { <p class="mt-1 text-sm text-red-700">Mínimo 6 caracteres.</p> }
+            </div>
+            <div class="flex items-end gap-3">
+              <button type="submit" [disabled]="saving()"
+                      class="flex-1 rounded-md bg-pine px-4 py-2.5 font-medium text-white hover:bg-pine-dark disabled:opacity-60">
+                {{ editingId() ? 'Guardar cambios' : 'Registrar médico' }}
+              </button>
+              @if (editingId()) {
+                <button type="button" (click)="resetForm()" class="rounded-md border border-slate-300 px-4 py-2.5">Cancelar</button>
               }
             </div>
-
-            <button
-              type="submit"
-              class="w-full rounded-md bg-pine text-white px-4 py-2.5 font-medium transition hover:bg-pine-dark disabled:opacity-60"
-            >
-              {{ showEditMode() ? 'Guardar Cambios' : 'Guardar Médico' }}
-            </button>
           </form>
         </div>
       </div>
     </section>
   `,
 })
-export class AdminComponent {
+export class AdminComponent implements OnInit {
   private auth = inject(AuthService);
   private router = inject(Router);
-  private adminService = inject(AdminService);
+  private admin = inject(AdminService);
   private fb = inject(FormBuilder);
 
-  // Estado de edición
-  showEditMode = signal(false);
-  currentDoctorId = signal<number | null>(null);
+  doctors = signal<Doctor[]>([]);
+  editingId = signal<number | null>(null);
+  saving = signal(false);
+  feedback = signal<{ ok: boolean; text: string } | null>(null);
 
-  // Alertas de éxito
-  showSuccess = signal(false);
-  successMessage = signal('');
+  stats = signal<DashboardStats | null>(null);
+  statsError = signal('');
+  dateFrom = isoDaysAgo(30);
+  dateTo = isoDaysAgo(0);
 
-  // Formularios reactivos
-  doctorForm!: FormGroup;
-  boxForm!: FormGroup;
-  scheduleForm!: FormGroup;
-  doctorsList = signal<DoctorList[]>([]);
+  form = this.fb.nonNullable.group({
+    full_name: ['', [Validators.required, Validators.minLength(3)]],
+    specialty: ['', [Validators.required, Validators.minLength(2)]],
+    email: ['', [Validators.required, Validators.email]],
+    box_number: [1, [Validators.required, Validators.min(1)]],
+    phone: [''],
+    is_active: [true],
+    password: ['', [Validators.required, Validators.minLength(6)]],
+  });
 
-  constructor() {
-    this.doctorForm = this.fb.nonNullable.group({
-      full_name: ['', [Validators.required]],
-      specialty: ['', [Validators.required]],
-      email: ['', [Validators.required, Validators.email]],
-      box_number: ['', [Validators.required]],
-      phone: [''],
-      is_active: ['true', [Validators.required]],
-      password: ['', [Validators.required]],
-    });
-
-    this.boxForm = this.fb.nonNullable.group({
-      name: ['', [Validators.required]],
-      location: ['', [Validators.required]],
-    });
-
-    this.scheduleForm = this.fb.nonNullable.group({
-      doctor_id: ['', [Validators.required]],
-      start_time: ['', [Validators.required]],
-      end_time: ['', [Validators.required]],
-    });
-
-    // Cargar lista de médicos al iniciar
+  ngOnInit(): void {
     this.loadDoctors();
+    this.loadStats();
   }
 
-  /** Cargar la lista de médicos desde el backend */
   loadDoctors(): void {
-    this.adminService.getDoctors().subscribe({
-      next: (doctors) => {
-        this.doctorsList.set(doctors);
-      },
+    this.admin.getDoctors().subscribe({ next: (list) => this.doctors.set(list) });
+  }
+
+  loadStats(): void {
+    this.statsError.set('');
+    this.admin.getDashboardStats(this.dateFrom, this.dateTo).subscribe({
+      next: (s) => this.stats.set(s),
       error: (err) => {
-        console.error('Error al cargar médicos:', err);
+        if (err.status === 401 || err.status === 403) this.logout();
+        this.statsError.set(typeof err.error?.detail === 'string' ? err.error.detail : 'No se pudieron cargar los indicadores.');
       },
     });
   }
 
-  /** Cambiar al modo edición para un médico específico */
-  editDoctor(id: number): void {
-    this.adminService.getDoctors().subscribe({
-      next: (doctors) => {
-        const doctor = doctors.find((d) => d.id === id);
-        if (doctor) {
-          this.currentDoctorId.set(id);
-          this.showEditMode.set(true);
-          // Llenar el formulario con los datos del médico
-          this.doctorForm.patchValue({
-            full_name: doctor.full_name,
-            specialty: doctor.specialty || '',
-            email: doctor.full_name ? doctor.full_name.replace(/[0-9]/g, '') + '@vetconnect.cl' : '',
-            box_number: doctor.box_number,
-            phone: doctor.phone || '',
-            is_active: doctor.is_active,
-            password: '', // No llenar la contraseña en modo edición (se mantiene la actual)
-          });
-        }
-      },
-      error: (err) => {
-        console.error('Error al cargar médico para editar:', err);
-      },
-    });
+  invalid(name: 'full_name' | 'specialty' | 'email' | 'box_number' | 'password'): boolean {
+    const c = this.form.controls[name];
+    return c.touched && c.invalid;
   }
 
-  /** Alternar entre modo creación y edición */
-  toggleEditMode(): void {
-    this.showEditMode.update((val) => !val);
-    if (!this.showEditMode()) {
-      this.currentDoctorId.set(null);
-      this.doctorForm.reset();
+  edit(doc: Doctor): void {
+    this.editingId.set(doc.id);
+    this.feedback.set(null);
+    this.form.reset({
+      full_name: doc.full_name,
+      specialty: doc.specialty,
+      email: doc.email,
+      box_number: doc.box_number,
+      phone: doc.phone,
+      is_active: doc.is_active,
+      password: '',
+    });
+    this.form.controls.email.disable(); // el correo identifica al usuario: no se edita
+    this.form.controls.password.setValidators([Validators.minLength(6)]);
+    this.form.controls.password.updateValueAndValidity();
+  }
+
+  resetForm(): void {
+    this.editingId.set(null);
+    this.form.reset();
+    this.form.controls.email.enable();
+    this.form.controls.password.setValidators([Validators.required, Validators.minLength(6)]);
+    this.form.controls.password.updateValueAndValidity();
+  }
+
+  submit(): void {
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
     }
+    const { email, password, ...rest } = this.form.getRawValue();
+    const id = this.editingId();
+    const request$ = id
+      ? this.admin.updateDoctor(id, password ? { ...rest, password } : rest)
+      : this.admin.createDoctor({ ...rest, email, password });
+
+    this.saving.set(true);
+    request$.subscribe({
+      next: () => {
+        this.saving.set(false);
+        this.feedback.set({ ok: true, text: id ? 'Médico actualizado correctamente.' : 'Médico registrado correctamente.' });
+        this.resetForm();
+        this.loadDoctors();
+        this.loadStats();
+      },
+      error: (err) => {
+        this.saving.set(false);
+        const detail = err.error?.detail;
+        this.feedback.set({ ok: false, text: typeof detail === 'string' ? detail : 'Revisa los datos e intenta de nuevo.' });
+      },
+    });
   }
 
-  /** Cerrar sesión */
   logout(): void {
     this.auth.logout();
     this.router.navigate(['/login']);
-  }
-
-  /** Manejar el envío del formulario */
-  onSubmitDoctor(): void {
-    if (this.doctorForm.invalid) {
-      this.doctorForm.markAllAsTouched();
-      return;
-    }
-
-    const rawValue = this.doctorForm.getRawValue();
-
-    if (this.showEditMode() && this.currentDoctorId()) {
-      // Modo edición: enviar ID y datos
-      this.adminService
-        .updateDoctor(this.currentDoctorId()!, rawValue as any)
-        .subscribe({
-          next: () => {
-            this.showSuccess.set(true);
-            this.successMessage.set('Médico actualizado correctamente.');
-            this.toggleEditMode();
-            this.loadDoctors(); // Actualizar la lista
-          },
-          error: (err) => {
-            console.error('Error al actualizar médico:', err);
-            this.showSuccess.set(true);
-            this.successMessage.set('Error al actualizar médico. Intenta de nuevo.');
-            setTimeout(() => this.showSuccess.set(false), 3000);
-          },
-        });
-    } else {
-      // Modo creación: nuevo médico
-      this.adminService.createDoctor(rawValue as any).subscribe({
-        next: () => {
-          this.showSuccess.set(true);
-          this.successMessage.set('Médico registrado correctamente.');
-          this.doctorForm.reset();
-          this.loadDoctors(); // Actualizar la lista
-          setTimeout(() => this.showSuccess.set(false), 3000);
-        },
-        error: (err) => {
-          console.error('Error al registrar médico:', err);
-          this.showSuccess.set(true);
-          this.successMessage.set('Error al registrar médico. Intenta de nuevo.');
-          setTimeout(() => this.showSuccess.set(false), 3000);
-        },
-      });
-    }
-  }
-
-  onSubmitBox(): void {
-    if (this.boxForm.invalid) {
-      this.boxForm.markAllAsTouched();
-      return;
-    }
-
-    this.adminService.createBox(this.boxForm.getRawValue()).subscribe({
-      next: () => {
-        this.showSuccess.set(true);
-        this.successMessage.set('Box de atención registrado correctamente.');
-        this.boxForm.reset();
-        setTimeout(() => this.showSuccess.set(false), 3000);
-      },
-      error: (err) => {
-        console.error('Error al registrar box:', err);
-        this.showSuccess.set(true);
-        this.successMessage.set('Error al registrar box. Intenta de nuevo.');
-        setTimeout(() => this.showSuccess.set(false), 3000);
-      },
-    });
-  }
-
-  onSubmitSchedule(): void {
-    if (this.scheduleForm.invalid) {
-      this.scheduleForm.markAllAsTouched();
-      return;
-    }
-
-    this.adminService.createSchedule(this.scheduleForm.getRawValue()).subscribe({
-      next: () => {
-        this.showSuccess.set(true);
-        this.successMessage.set('Disponibilidad de horario publicada correctamente.');
-        this.scheduleForm.reset();
-        setTimeout(() => this.showSuccess.set(false), 3000);
-      },
-      error: (err) => {
-        console.error('Error al publicar horario:', err);
-        this.showSuccess.set(true);
-        this.successMessage.set('Error al publicar horario. Intenta de nuevo.');
-        setTimeout(() => this.showSuccess.set(false), 3000);
-      },
-    });
   }
 }
