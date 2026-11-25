@@ -9,6 +9,7 @@ import {
   Slot,
 } from '../../services/appointment.service';
 import { AuthService } from '../../services/auth.service';
+import { TopbarComponent } from '../topbar/topbar.component';
 
 interface ModalState {
   type: 'success' | 'error';
@@ -26,120 +27,119 @@ const STATUS_LABEL: Record<AppointmentStatus, string> = {
 @Component({
   selector: 'app-booking',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, TopbarComponent],
   template: `
-    <header class="flex items-center justify-between bg-pine px-6 py-4 text-white">
-      <p class="font-semibold">VetConnect Maule</p>
-      <div class="flex items-center gap-4 text-sm">
-        <span>{{ auth.getFullName() }}</span>
-        <button (click)="logout()" class="rounded border border-white/40 px-3 py-1 hover:bg-white/10">Cerrar sesión</button>
-      </div>
-    </header>
+    <app-topbar />
 
-    <main class="mx-auto max-w-3xl p-6">
-      <h1 class="text-2xl font-bold">{{ rescheduling() ? 'Reprogramar mi hora' : 'Reservar una hora' }}</h1>
-      <p class="mt-1 text-slate-600">Elige médico y fecha. Solo ves los bloques que están libres.</p>
+    <main class="page">
+      <section class="relative overflow-hidden rounded-4xl bg-espresso px-8 py-12 sm:px-12">
+        <p class="eyebrow">{{ rescheduling() ? 'Reprogramación' : 'Reserva en línea' }}</p>
+        <h1 class="max-w-2xl text-4xl leading-tight text-cream sm:text-5xl">
+          @if (rescheduling()) { Elige un <span class="text-coral">nuevo horario</span> }
+          @else { Reserva la hora de tu <span class="text-coral">mascota</span> }
+        </h1>
+        <p class="mt-4 max-w-xl text-cream/80">Elige médico y fecha. Solo ves los bloques que están libres en este momento.</p>
+        <div class="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-coral/15" aria-hidden="true"></div>
+      </section>
 
-      <section class="mt-6 rounded-md border border-pine bg-pine-soft p-4">
-        <h2 class="mb-3 text-sm font-semibold text-pine">Mis reservas</h2>
-        @if (loadingMine()) {
-          <p class="text-sm text-slate-600">Cargando…</p>
-        } @else if (myAppointments().length === 0) {
-          <p class="text-sm text-slate-600">Aún no tienes reservas.</p>
-        } @else {
-          <ul class="max-h-56 space-y-2 overflow-y-auto">
-            @for (apt of myAppointments(); track apt.id) {
-              <li class="rounded-md border border-slate-300 bg-white p-3">
-                <div class="flex items-start justify-between gap-2">
-                  <span class="text-sm font-medium">{{ apt.doctor_name }} · box {{ apt.box_number }}</span>
-                  <span class="text-xs font-medium text-slate-500">
-                    {{ ymd(apt.start_time) }} | {{ hhmm(apt.start_time) }}–{{ hhmm(apt.end_time) }}
-                  </span>
-                </div>
-                <p class="mt-1 text-sm font-semibold" [class]="apt.status === 'CONFIRMED' ? 'text-green-700' : 'text-slate-600'">
-                  {{ statusLabel[apt.status] }}
-                </p>
-                @if (apt.status === 'CONFIRMED') {
-                  <div class="mt-2 flex gap-4">
-                    <button type="button" (click)="cancelAppointment(apt)" class="text-sm text-red-700 hover:underline">Cancelar</button>
-                    <button type="button" (click)="startReschedule(apt)" class="text-sm text-pine hover:underline">Reprogramar</button>
-                  </div>
+      <div class="mt-6 grid gap-6 lg:grid-cols-[1fr_340px]">
+        <section class="card">
+          @if (rescheduling(); as r) {
+            <div role="status" class="alert-info mb-6 flex items-center justify-between gap-4">
+              <span>
+                Reprogramando la cita del <strong>{{ ymd(r.start_time) }} a las {{ hhmm(r.start_time) }}</strong>
+                con {{ r.doctor_name }}.
+              </span>
+              <button type="button" (click)="stopReschedule()" class="btn-link shrink-0 text-espresso">Volver</button>
+            </div>
+          }
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label for="doctor" class="label">Médico veterinario</label>
+              <select id="doctor" [ngModel]="doctorId()" (ngModelChange)="onDoctorChange($event)" [disabled]="!!rescheduling()" class="input">
+                <option [ngValue]="null" disabled>Selecciona un médico</option>
+                @for (d of activeDoctors(); track d.id) {
+                  <option [ngValue]="d.id">{{ d.full_name }} · {{ d.specialty }} (box {{ d.box_number }})</option>
                 }
-              </li>
-            }
-          </ul>
-        }
-      </section>
-
-      @if (rescheduling(); as r) {
-        <div role="status" class="mt-6 flex items-center justify-between rounded-md border border-amber-vet bg-amber-50 p-4 text-sm">
-          <span>
-            Reprogramando la cita del <strong>{{ ymd(r.start_time) }} a las {{ hhmm(r.start_time) }}</strong>
-            con {{ r.doctor_name }}. Elige un nuevo bloque.
-          </span>
-          <button type="button" (click)="stopReschedule()" class="ml-4 shrink-0 font-medium text-slate-700 underline">Volver</button>
-        </div>
-      }
-
-      <div class="mt-6 grid gap-4 sm:grid-cols-2">
-        <div>
-          <label for="doctor" class="mb-1 block text-sm font-medium">Médico veterinario</label>
-          <select id="doctor" [ngModel]="doctorId()" (ngModelChange)="onDoctorChange($event)" [disabled]="!!rescheduling()"
-                  class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 disabled:bg-slate-100">
-            <option [ngValue]="null" disabled>Selecciona un médico</option>
-            @for (d of activeDoctors(); track d.id) {
-              <option [ngValue]="d.id">{{ d.full_name }} · {{ d.specialty }} (box {{ d.box_number }})</option>
-            }
-          </select>
-        </div>
-        <div>
-          <label for="date" class="mb-1 block text-sm font-medium">Fecha</label>
-          <input id="date" type="date" [min]="today" [ngModel]="date()" (ngModelChange)="onDateChange($event)"
-                 class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5" />
-        </div>
-      </div>
-
-      <section class="mt-8" aria-live="polite">
-        <h2 class="mb-3 font-semibold">Horarios disponibles</h2>
-        @if (!doctorId() || !date()) {
-          <p class="text-slate-600">Selecciona un médico y una fecha para ver los horarios.</p>
-        } @else if (loadingSlots()) {
-          <p class="text-slate-600">Buscando horarios…</p>
-        } @else if (slots().length === 0) {
-          <p class="rounded-md bg-white p-4 text-slate-700">No quedan horas libres este día. Prueba con otra fecha.</p>
-        } @else {
-          <div class="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
-            @for (s of slots(); track s.start_time) {
-              <button type="button" (click)="selected.set(s)"
-                      [attr.aria-pressed]="selected()?.start_time === s.start_time"
-                      class="rounded-md border px-2 py-2.5 text-sm font-medium transition"
-                      [class]="selected()?.start_time === s.start_time
-                        ? 'border-pine bg-pine text-white'
-                        : 'border-slate-300 bg-white hover:border-pine hover:bg-pine-soft'">
-                {{ hhmm(s.start_time) }}
-              </button>
-            }
+              </select>
+            </div>
+            <div>
+              <label for="date" class="label">Fecha</label>
+              <input id="date" type="date" [min]="today" [ngModel]="date()" (ngModelChange)="onDateChange($event)" class="input" />
+            </div>
           </div>
-        }
-      </section>
 
-      <button type="button" (click)="confirm()" [disabled]="!selected() || submitting()"
-              class="mt-8 w-full rounded-md bg-amber-vet px-4 py-3 font-semibold text-ink transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
-        {{ submitting() ? 'Guardando…' : rescheduling() ? 'Confirmar nuevo horario' : 'Confirmar reserva' }}
-      </button>
+          <section class="mt-8" aria-live="polite">
+            <h2 class="mb-4 text-2xl">Horarios disponibles</h2>
+            @if (!doctorId() || !date()) {
+              <p>Selecciona un médico y una fecha para ver los horarios.</p>
+            } @else if (loadingSlots()) {
+              <p>Buscando horarios…</p>
+            } @else if (slots().length === 0) {
+              <p class="rounded-2xl bg-cream px-5 py-4">No quedan horas libres este día. Prueba con otra fecha.</p>
+            } @else {
+              <div class="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+                @for (s of slots(); track s.start_time) {
+                  <button type="button" (click)="selected.set(s)"
+                          [attr.aria-pressed]="selected()?.start_time === s.start_time"
+                          class="rounded-full border px-2 py-2.5 text-sm font-medium transition"
+                          [class]="selected()?.start_time === s.start_time
+                            ? 'border-espresso bg-espresso text-cream'
+                            : 'border-line bg-white text-espresso hover:border-coral hover:text-coral'">
+                    {{ hhmm(s.start_time) }}
+                  </button>
+                }
+              </div>
+            }
+          </section>
+
+          <button type="button" (click)="confirm()" [disabled]="!selected() || submitting()" class="btn-primary mt-8 w-full py-3.5 sm:w-auto">
+            {{ submitting() ? 'Guardando…' : rescheduling() ? 'Confirmar nuevo horario' : 'Confirmar reserva' }}
+          </button>
+        </section>
+
+        <aside class="card h-fit">
+          <h2 class="card-title">Mis reservas</h2>
+          @if (loadingMine()) {
+            <p class="text-sm">Cargando…</p>
+          } @else if (myAppointments().length === 0) {
+            <p class="text-sm">Aún no tienes reservas.</p>
+          } @else {
+            <ul class="max-h-[28rem] space-y-3 overflow-y-auto pr-1">
+              @for (apt of myAppointments(); track apt.id) {
+                <li class="rounded-2xl bg-cream p-4">
+                  <div class="flex items-start justify-between gap-2">
+                    <div>
+                      <p class="font-medium text-espresso">{{ apt.doctor_name }}</p>
+                      <p class="text-xs">Box {{ apt.box_number }} · {{ ymd(apt.start_time) }} · {{ hhmm(apt.start_time) }}–{{ hhmm(apt.end_time) }}</p>
+                    </div>
+                    <span [class]="badgeClass[apt.status]">{{ statusLabel[apt.status] }}</span>
+                  </div>
+                  @if (apt.status === 'CONFIRMED') {
+                    <div class="mt-3 flex gap-4">
+                      <button type="button" (click)="startReschedule(apt)" class="btn-link text-coral">Reprogramar</button>
+                      <button type="button" (click)="cancelAppointment(apt)" class="btn-link text-muted">Cancelar</button>
+                    </div>
+                  }
+                </li>
+              }
+            </ul>
+          }
+        </aside>
+      </div>
     </main>
 
     @if (modal(); as m) {
-      <div class="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-        <div class="w-full max-w-sm rounded-lg border-t-8 bg-white p-6 shadow-xl"
-             [class]="m.type === 'success' ? 'border-green-600' : 'border-red-600'">
-          <h3 class="text-lg font-bold" [class]="m.type === 'success' ? 'text-green-800' : 'text-red-800'">{{ m.title }}</h3>
-          <p class="mt-2 text-slate-700">{{ m.message }}</p>
-          <button (click)="modal.set(null)"
-                  class="mt-5 w-full rounded-md px-4 py-2 font-semibold text-white"
-                  [class]="m.type === 'success' ? 'bg-green-700 hover:bg-green-800' : 'bg-red-700 hover:bg-red-800'">
-            Entendido
-          </button>
+      <div class="fixed inset-0 z-30 flex items-center justify-center bg-espresso/50 p-4" role="dialog" aria-modal="true">
+        <div class="w-full max-w-sm rounded-4xl bg-white p-8 text-center">
+          <span class="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full text-xl"
+                [class]="m.type === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'" aria-hidden="true">
+            {{ m.type === 'success' ? '✓' : '!' }}
+          </span>
+          <h3 class="text-2xl">{{ m.title }}</h3>
+          <p class="mt-2">{{ m.message }}</p>
+          <button (click)="modal.set(null)" class="btn-dark mt-6 w-full">Entendido</button>
         </div>
       </div>
     }
@@ -151,6 +151,12 @@ export class BookingComponent implements OnInit {
   auth = inject(AuthService);
 
   readonly statusLabel = STATUS_LABEL;
+  readonly badgeClass: Record<AppointmentStatus, string> = {
+    CONFIRMED: 'badge-confirmed',
+    ARRIVED: 'badge-arrived',
+    COMPLETED: 'badge-completed',
+    CANCELLED: 'badge-cancelled',
+  };
   today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD en hora local
   doctors = signal<Doctor[]>([]);
   activeDoctors = computed(() => this.doctors().filter((d) => d.is_active));

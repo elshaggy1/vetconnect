@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { AdminService, DashboardStats } from '../../services/admin.service';
 import { Doctor } from '../../services/appointment.service';
 import { AuthService } from '../../services/auth.service';
+import { TopbarComponent } from '../topbar/topbar.component';
 
 function isoDaysAgo(days: number): string {
   const d = new Date();
@@ -13,186 +14,169 @@ function isoDaysAgo(days: number): string {
 
 @Component({
   standalone: true,
-  imports: [FormsModule, ReactiveFormsModule],
+  imports: [FormsModule, ReactiveFormsModule, TopbarComponent],
   selector: 'app-admin',
   template: `
-    <section class="min-h-screen bg-pine-soft p-6">
-      <div class="mx-auto max-w-6xl space-y-8">
-        <header class="flex items-center justify-between">
-          <div>
-            <h2 class="text-3xl font-bold text-pine">Panel de Administración</h2>
-            <p class="mt-1 text-slate-600">Clínica Veterinaria San Francisco · Talca</p>
-          </div>
-          <button (click)="logout()"
-                  class="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 shadow-sm hover:bg-red-50">
-            Cerrar sesión
-          </button>
-        </header>
+    <app-topbar />
 
-        <!-- VET-16: indicadores para el director -->
-        <div class="rounded-lg bg-white p-6 shadow-sm">
-          <div class="flex flex-wrap items-end justify-between gap-4">
-            <h3 class="text-lg font-semibold text-pine">Indicadores de atención</h3>
-            <div class="flex flex-wrap items-end gap-3 text-sm">
-              <label>Desde
-                <input type="date" [(ngModel)]="dateFrom" class="ml-1 rounded-md border border-slate-300 px-2 py-1.5" />
-              </label>
-              <label>Hasta
-                <input type="date" [(ngModel)]="dateTo" class="ml-1 rounded-md border border-slate-300 px-2 py-1.5" />
-              </label>
-              <button (click)="loadStats()" class="rounded-md bg-pine px-3 py-1.5 font-medium text-white hover:bg-pine-dark">
-                Actualizar
-              </button>
-            </div>
-          </div>
-
-          @if (statsError()) {
-            <p class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{{ statsError() }}</p>
-          } @else if (stats(); as s) {
-            <div class="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-              <div class="rounded-md border border-slate-200 p-4">
-                <p class="text-sm text-slate-500">Citas en el periodo</p>
-                <p class="text-3xl font-bold">{{ s.total }}</p>
-              </div>
-              <div class="rounded-md border border-slate-200 p-4">
-                <p class="text-sm text-slate-500">Atendidas</p>
-                <p class="text-3xl font-bold text-green-700">{{ s.attended }}</p>
-              </div>
-              <div class="rounded-md border border-slate-200 p-4">
-                <p class="text-sm text-slate-500">Inasistencia (no-show)</p>
-                <p class="text-3xl font-bold" [class]="s.no_show_rate_pct > 15 ? 'text-red-700' : 'text-ink'">
-                  {{ s.no_show_rate_pct }}%
-                </p>
-                <p class="text-xs text-slate-500">{{ s.no_show }} citas sin llegada · meta ≤ 15%</p>
-              </div>
-              <div class="rounded-md border border-slate-200 p-4">
-                <p class="text-sm text-slate-500">Cancelaciones</p>
-                <p class="text-3xl font-bold">{{ s.cancellation_rate_pct }}%</p>
-                <p class="text-xs text-slate-500">{{ s.by_status.CANCELLED }} canceladas a tiempo</p>
-              </div>
-            </div>
-
-            <h4 class="mb-2 mt-6 text-sm font-semibold text-slate-700">Ocupación de boxes</h4>
-            <div class="space-y-3">
-              @for (o of s.occupancy; track o.doctor_id) {
-                <div>
-                  <div class="flex justify-between text-sm">
-                    <span>Box {{ o.box_number }} · {{ o.doctor_name }}</span>
-                    <span class="font-medium">{{ o.occupancy_pct }}% ({{ o.booked_slots }}/{{ o.available_slots }} bloques)</span>
-                  </div>
-                  <div class="mt-1 h-2.5 w-full rounded-full bg-slate-100" role="progressbar"
-                       [attr.aria-valuenow]="o.occupancy_pct" aria-valuemin="0" aria-valuemax="100">
-                    <div class="h-2.5 rounded-full bg-pine" [style.width.%]="o.occupancy_pct > 100 ? 100 : o.occupancy_pct"></div>
-                  </div>
-                </div>
-              } @empty {
-                <p class="text-sm text-slate-500">Sin médicos activos.</p>
-              }
-            </div>
-          } @else {
-            <p class="mt-4 text-sm text-slate-500">Cargando indicadores…</p>
-          }
+    <main class="page space-y-6">
+      <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p class="eyebrow">Administración</p>
+          <h1 class="text-4xl sm:text-5xl">Panel de la <span class="text-coral">clínica</span></h1>
         </div>
-
-        <!-- VET-07: médicos -->
-        <div class="rounded-lg bg-white p-6 shadow-sm">
-          <h3 class="mb-4 text-lg font-semibold text-pine">Médicos registrados</h3>
-          <div class="overflow-x-auto">
-            <table class="w-full border-collapse text-sm">
-              <thead>
-                <tr class="bg-pine/10 text-left text-pine">
-                  <th class="border p-2">Nombre</th>
-                  <th class="border p-2">Correo</th>
-                  <th class="border p-2">Especialidad</th>
-                  <th class="border p-2">Box</th>
-                  <th class="border p-2">Teléfono</th>
-                  <th class="border p-2">Estado</th>
-                  <th class="border p-2 text-center">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (doc of doctors(); track doc.id) {
-                  <tr [class]="editingId() === doc.id ? 'bg-amber-50' : ''">
-                    <td class="border p-2">{{ doc.full_name }}</td>
-                    <td class="border p-2">{{ doc.email }}</td>
-                    <td class="border p-2">{{ doc.specialty }}</td>
-                    <td class="border p-2">{{ doc.box_number }}</td>
-                    <td class="border p-2">{{ doc.phone || '-' }}</td>
-                    <td class="border p-2">{{ doc.is_active ? 'Activo' : 'Inactivo' }}</td>
-                    <td class="border p-2 text-center">
-                      <button (click)="edit(doc)" class="text-pine underline hover:text-pine-dark">Editar</button>
-                    </td>
-                  </tr>
-                } @empty {
-                  <tr><td colspan="7" class="border p-2 text-center text-slate-500">No hay médicos registrados</td></tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="rounded-lg bg-white p-6 shadow-sm">
-          <h3 class="mb-4 text-lg font-semibold text-pine">{{ editingId() ? 'Editar médico' : 'Registrar nuevo médico' }}</h3>
-
-          @if (feedback(); as f) {
-            <p role="alert" class="mb-4 rounded-md px-3 py-2 text-sm"
-               [class]="f.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'">{{ f.text }}</p>
-          }
-
-          <form [formGroup]="form" (ngSubmit)="submit()" class="grid gap-4 sm:grid-cols-2" novalidate>
-            <div>
-              <label for="fullName" class="mb-1 block text-sm font-medium">Nombre completo</label>
-              <input id="fullName" formControlName="full_name" class="w-full rounded-md border border-slate-300 px-3 py-2.5" />
-              @if (invalid('full_name')) { <p class="mt-1 text-sm text-red-700">Mínimo 3 caracteres.</p> }
-            </div>
-            <div>
-              <label for="specialty" class="mb-1 block text-sm font-medium">Especialidad</label>
-              <input id="specialty" formControlName="specialty" class="w-full rounded-md border border-slate-300 px-3 py-2.5" />
-              @if (invalid('specialty')) { <p class="mt-1 text-sm text-red-700">La especialidad es obligatoria.</p> }
-            </div>
-            <div>
-              <label for="email" class="mb-1 block text-sm font-medium">Correo electrónico</label>
-              <input id="email" type="email" formControlName="email"
-                     class="w-full rounded-md border border-slate-300 px-3 py-2.5 disabled:bg-slate-100" />
-              @if (invalid('email')) { <p class="mt-1 text-sm text-red-700">Ingresa un correo válido.</p> }
-            </div>
-            <div>
-              <label for="box" class="mb-1 block text-sm font-medium">Número de box</label>
-              <input id="box" type="number" min="1" formControlName="box_number" class="w-full rounded-md border border-slate-300 px-3 py-2.5" />
-              @if (invalid('box_number')) { <p class="mt-1 text-sm text-red-700">Ingresa un box válido (1 o más).</p> }
-            </div>
-            <div>
-              <label for="phone" class="mb-1 block text-sm font-medium">Teléfono</label>
-              <input id="phone" formControlName="phone" class="w-full rounded-md border border-slate-300 px-3 py-2.5" />
-            </div>
-            <div>
-              <label for="active" class="mb-1 block text-sm font-medium">Disponibilidad</label>
-              <select id="active" formControlName="is_active" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5">
-                <option [ngValue]="true">Activo</option>
-                <option [ngValue]="false">Inactivo</option>
-              </select>
-            </div>
-            <div>
-              <label for="password" class="mb-1 block text-sm font-medium">
-                Contraseña {{ editingId() ? '(dejar vacío para mantener la actual)' : '' }}
-              </label>
-              <input id="password" type="password" formControlName="password" autocomplete="new-password"
-                     class="w-full rounded-md border border-slate-300 px-3 py-2.5" />
-              @if (invalid('password')) { <p class="mt-1 text-sm text-red-700">Mínimo 6 caracteres.</p> }
-            </div>
-            <div class="flex items-end gap-3">
-              <button type="submit" [disabled]="saving()"
-                      class="flex-1 rounded-md bg-pine px-4 py-2.5 font-medium text-white hover:bg-pine-dark disabled:opacity-60">
-                {{ editingId() ? 'Guardar cambios' : 'Registrar médico' }}
-              </button>
-              @if (editingId()) {
-                <button type="button" (click)="resetForm()" class="rounded-md border border-slate-300 px-4 py-2.5">Cancelar</button>
-              }
-            </div>
-          </form>
-        </div>
+        <p class="text-sm">Clínica Veterinaria San Francisco · Talca</p>
       </div>
-    </section>
+
+      <!-- VET-16: indicadores para el director -->
+      <section class="card">
+        <div class="flex flex-wrap items-end justify-between gap-4">
+          <h2 class="text-2xl">Indicadores de atención</h2>
+          <div class="flex flex-wrap items-end gap-3">
+            <div>
+              <label for="dFrom" class="label">Desde</label>
+              <input id="dFrom" type="date" [(ngModel)]="dateFrom" class="input py-2" />
+            </div>
+            <div>
+              <label for="dTo" class="label">Hasta</label>
+              <input id="dTo" type="date" [(ngModel)]="dateTo" class="input py-2" />
+            </div>
+            <button (click)="loadStats()" class="btn-dark">Actualizar</button>
+          </div>
+        </div>
+
+        @if (statsError()) {
+          <p class="alert-error mt-4">{{ statsError() }}</p>
+        } @else if (stats(); as s) {
+          <div class="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div class="rounded-2xl bg-cream p-5">
+              <p class="text-sm">Citas en el periodo</p>
+              <p class="mt-2 text-4xl text-espresso">{{ s.total }}</p>
+            </div>
+            <div class="rounded-2xl bg-cream p-5">
+              <p class="text-sm">Atendidas</p>
+              <p class="mt-2 text-4xl text-espresso">{{ s.attended }}</p>
+            </div>
+            <div class="rounded-2xl bg-espresso p-5">
+              <p class="text-sm text-cream/80">Inasistencia (no-show)</p>
+              <p class="mt-2 text-4xl" [class]="s.no_show_rate_pct > 15 ? 'text-coral' : 'text-cream'">{{ s.no_show_rate_pct }}%</p>
+              <p class="mt-1 text-xs text-muted-light">{{ s.no_show }} citas sin llegada · meta ≤ 15%</p>
+            </div>
+            <div class="rounded-2xl bg-cream p-5">
+              <p class="text-sm">Cancelaciones</p>
+              <p class="mt-2 text-4xl text-espresso">{{ s.cancellation_rate_pct }}%</p>
+              <p class="mt-1 text-xs">{{ s.by_status.CANCELLED }} canceladas a tiempo</p>
+            </div>
+          </div>
+
+          <h3 class="mb-3 mt-8 text-lg">Ocupación de boxes</h3>
+          <div class="space-y-4">
+            @for (o of s.occupancy; track o.doctor_id) {
+              <div>
+                <div class="flex justify-between text-sm">
+                  <span class="text-espresso">Box {{ o.box_number }} · {{ o.doctor_name }}</span>
+                  <span>{{ o.occupancy_pct }}% ({{ o.booked_slots }}/{{ o.available_slots }} bloques)</span>
+                </div>
+                <div class="mt-2 h-2.5 w-full rounded-full bg-cream-deep" role="progressbar"
+                     [attr.aria-valuenow]="o.occupancy_pct" aria-valuemin="0" aria-valuemax="100">
+                  <div class="h-2.5 rounded-full bg-coral" [style.width.%]="o.occupancy_pct > 100 ? 100 : o.occupancy_pct"></div>
+                </div>
+              </div>
+            } @empty {
+              <p class="text-sm">Sin médicos activos.</p>
+            }
+          </div>
+        } @else {
+          <p class="mt-4 text-sm">Cargando indicadores…</p>
+        }
+      </section>
+
+      <!-- VET-07: médicos -->
+      <section class="card">
+        <h2 class="card-title">Médicos registrados</h2>
+        <div class="overflow-x-auto">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Nombre</th><th>Correo</th><th>Especialidad</th><th>Box</th><th>Teléfono</th><th>Estado</th><th class="text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (doc of doctors(); track doc.id) {
+                <tr [class]="editingId() === doc.id ? 'bg-coral-soft/40' : ''">
+                  <td class="text-espresso">{{ doc.full_name }}</td>
+                  <td>{{ doc.email }}</td>
+                  <td>{{ doc.specialty }}</td>
+                  <td>{{ doc.box_number }}</td>
+                  <td>{{ doc.phone || '-' }}</td>
+                  <td><span [class]="doc.is_active ? 'badge-completed' : 'badge-cancelled'">{{ doc.is_active ? 'Activo' : 'Inactivo' }}</span></td>
+                  <td class="text-right"><button (click)="edit(doc)" class="btn-link text-coral">Editar</button></td>
+                </tr>
+              } @empty {
+                <tr><td colspan="7" class="text-center">No hay médicos registrados</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">{{ editingId() ? 'Editar médico' : 'Registrar nuevo médico' }}</h2>
+
+        @if (feedback(); as f) {
+          <p role="alert" class="mb-4" [class]="f.ok ? 'alert-success' : 'alert-error'">{{ f.text }}</p>
+        }
+
+        <form [formGroup]="form" (ngSubmit)="submit()" class="grid gap-4 sm:grid-cols-2" novalidate>
+          <div>
+            <label for="fullName" class="label">Nombre completo</label>
+            <input id="fullName" formControlName="full_name" class="input" />
+            @if (invalid('full_name')) { <p class="field-error">Mínimo 3 caracteres.</p> }
+          </div>
+          <div>
+            <label for="specialty" class="label">Especialidad</label>
+            <input id="specialty" formControlName="specialty" class="input" />
+            @if (invalid('specialty')) { <p class="field-error">La especialidad es obligatoria.</p> }
+          </div>
+          <div>
+            <label for="email" class="label">Correo electrónico</label>
+            <input id="email" type="email" formControlName="email" class="input" />
+            @if (invalid('email')) { <p class="field-error">Ingresa un correo válido.</p> }
+          </div>
+          <div>
+            <label for="box" class="label">Número de box</label>
+            <input id="box" type="number" min="1" formControlName="box_number" class="input" />
+            @if (invalid('box_number')) { <p class="field-error">Ingresa un box válido (1 o más).</p> }
+          </div>
+          <div>
+            <label for="phone" class="label">Teléfono</label>
+            <input id="phone" formControlName="phone" class="input" />
+          </div>
+          <div>
+            <label for="active" class="label">Disponibilidad</label>
+            <select id="active" formControlName="is_active" class="input">
+              <option [ngValue]="true">Activo</option>
+              <option [ngValue]="false">Inactivo</option>
+            </select>
+          </div>
+          <div>
+            <label for="password" class="label">
+              Contraseña {{ editingId() ? '(dejar vacío para mantener la actual)' : '' }}
+            </label>
+            <input id="password" type="password" formControlName="password" autocomplete="new-password" class="input" />
+            @if (invalid('password')) { <p class="field-error">Mínimo 6 caracteres.</p> }
+          </div>
+          <div class="flex items-end gap-3">
+            <button type="submit" [disabled]="saving()" class="btn-primary flex-1 py-3">
+              {{ editingId() ? 'Guardar cambios' : 'Registrar médico' }}
+            </button>
+            @if (editingId()) {
+              <button type="button" (click)="resetForm()" class="btn-ghost py-3">Cancelar</button>
+            }
+          </div>
+        </form>
+      </section>
+    </main>
   `,
 })
 export class AdminComponent implements OnInit {

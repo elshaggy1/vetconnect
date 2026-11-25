@@ -8,50 +8,65 @@ import { AuthService } from '../../services/auth.service';
   standalone: true,
   imports: [ReactiveFormsModule],
   template: `
-    <main class="grid min-h-screen lg:grid-cols-[2fr_3fr]">
-      <section class="flex flex-col justify-between bg-pine p-8 text-white lg:p-14">
-        <p class="text-lg font-semibold">VetConnect Maule</p>
-        <div class="py-10">
-          <h1 class="max-w-sm text-4xl font-bold leading-tight">Reserva la hora de tu mascota sin llamar.</h1>
-          <p class="mt-4 max-w-sm text-pine-soft">
-            Mira los horarios libres de cada médico en tiempo real y confirma al instante.
+    <main class="grid min-h-screen bg-cream lg:grid-cols-2">
+      <section class="relative m-3 flex flex-col justify-between overflow-hidden rounded-4xl bg-espresso p-8 text-cream sm:p-12 lg:m-4">
+        <span class="flex items-center gap-2 text-lg font-semibold text-cream">
+          <span class="grid h-8 w-8 place-items-center rounded-full bg-coral text-espresso" aria-hidden="true">
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor"><path d="M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7z" /></svg>
+          </span>
+          <span>VetConnect<span class="text-coral">.</span></span>
+        </span>
+
+        <div class="py-12">
+          <h1 class="max-w-md text-5xl leading-[1.15] text-cream sm:text-6xl">
+            La salud de tu <span class="text-coral">mascota</span>, sin filas
+          </h1>
+          <p class="mt-6 max-w-sm text-cream/80">
+            Mira los horarios libres de cada médico en tiempo real y confirma tu hora al instante.
           </p>
+          <ul class="mt-8 space-y-3 text-sm text-cream/90">
+            <li class="flex items-center gap-3"><span class="h-2 w-2 rounded-full bg-coral"></span>Reserva sin choques de horario</li>
+            <li class="flex items-center gap-3"><span class="h-2 w-2 rounded-full bg-coral"></span>Confirmación y recordatorio por correo</li>
+            <li class="flex items-center gap-3"><span class="h-2 w-2 rounded-full bg-coral"></span>Ficha clínica y receta digital</li>
+          </ul>
         </div>
-        <p class="text-sm text-pine-soft">Clínica Veterinaria San Francisco · Talca</p>
+
+        <p class="text-sm text-muted-light">Clínica Veterinaria San Francisco · Talca</p>
+        <div class="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-coral/15" aria-hidden="true"></div>
       </section>
 
-      <section class="flex items-center justify-center p-6">
-        <form [formGroup]="form" (ngSubmit)="submit()" class="w-full max-w-sm space-y-5" novalidate>
-          <h2 class="text-2xl font-semibold">Iniciar sesión</h2>
+      <section class="flex items-center justify-center p-6 sm:p-10">
+        <form [formGroup]="form" (ngSubmit)="submit()" class="w-full max-w-md space-y-5 rounded-4xl bg-white p-8 sm:p-10" novalidate>
+          <div>
+            <p class="eyebrow">Bienvenido</p>
+            <h2 class="text-4xl">Iniciar sesión</h2>
+          </div>
 
           <div>
-            <label for="email" class="mb-1 block text-sm font-medium">Correo electrónico</label>
-            <input id="email" type="email" formControlName="email" autocomplete="username"
-                   class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 focus:border-pine" />
+            <label for="email" class="label">Correo electrónico</label>
+            <input id="email" type="email" formControlName="email" autocomplete="username" class="input" />
             @if (form.controls.email.touched && form.controls.email.invalid) {
-              <p class="mt-1 text-sm text-red-700">
+              <p class="field-error">
                 {{ form.controls.email.hasError('required') ? 'Ingresa tu correo.' : 'Revisa el formato del correo.' }}
               </p>
             }
           </div>
 
           <div>
-            <label for="password" class="mb-1 block text-sm font-medium">Contraseña</label>
-            <input id="password" type="password" formControlName="password" autocomplete="current-password"
-                   class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 focus:border-pine" />
+            <label for="password" class="label">Contraseña</label>
+            <input id="password" type="password" formControlName="password" autocomplete="current-password" class="input" />
             @if (form.controls.password.touched && form.controls.password.invalid) {
-              <p class="mt-1 text-sm text-red-700">
+              <p class="field-error">
                 {{ form.controls.password.hasError('required') ? 'Ingresa tu contraseña.' : 'Debe tener al menos 6 caracteres.' }}
               </p>
             }
           </div>
 
           @if (error()) {
-            <p role="alert" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{{ error() }}</p>
+            <p role="alert" class="alert-error">{{ error() }}</p>
           }
 
-          <button type="submit" [disabled]="loading()"
-                  class="w-full rounded-md bg-pine px-4 py-2.5 font-semibold text-white transition hover:bg-pine-dark disabled:opacity-60">
+          <button type="submit" [disabled]="loading()" class="btn-primary w-full py-3.5">
             {{ loading() ? 'Entrando…' : 'Entrar' }}
           </button>
         </form>

@@ -9,6 +9,7 @@ import {
   NotificationLog,
 } from '../../services/appointment.service';
 import { AuthService } from '../../services/auth.service';
+import { TopbarComponent } from '../topbar/topbar.component';
 
 const STATUS_LABEL: Record<AppointmentStatus, string> = {
   CONFIRMED: 'Confirmado',
@@ -17,125 +18,118 @@ const STATUS_LABEL: Record<AppointmentStatus, string> = {
   CANCELLED: 'Cancelado',
 };
 const STATUS_CLASS: Record<AppointmentStatus, string> = {
-  CONFIRMED: 'bg-pine text-white',
-  ARRIVED: 'bg-amber-vet text-ink',
-  COMPLETED: 'bg-green-600 text-white',
-  CANCELLED: 'bg-red-600 text-white',
+  CONFIRMED: 'badge-confirmed',
+  ARRIVED: 'badge-arrived',
+  COMPLETED: 'badge-completed',
+  CANCELLED: 'badge-cancelled',
 };
 
 @Component({
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, TopbarComponent],
   selector: 'app-reception',
   template: `
-    <section class="min-h-screen bg-pine-soft p-6">
-      <div class="mx-auto max-w-6xl">
-        <header class="mb-8 flex items-center justify-between">
-          <div>
-            <h2 class="text-3xl font-bold text-pine">Panel de Recepción</h2>
-            <p class="mt-1 text-slate-600">Clínica Veterinaria San Francisco · Talca</p>
-          </div>
-          <button (click)="logout()"
-                  class="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 shadow-sm hover:bg-red-50">
-            Cerrar sesión
-          </button>
-        </header>
+    <app-topbar />
 
-        <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <label for="fDate" class="mb-2 block text-sm font-medium text-slate-700">Fecha</label>
-            <input id="fDate" type="date" [ngModel]="filterDate()" (ngModelChange)="filterDate.set($event); loadAgenda()"
-                   class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5" />
-          </div>
-          <div>
-            <label for="fDoc" class="mb-2 block text-sm font-medium text-slate-700">Médico</label>
-            <select id="fDoc" [ngModel]="filterDoctorId()" (ngModelChange)="filterDoctorId.set($event); loadAgenda()"
-                    class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5">
-              <option [ngValue]="null">Todos los médicos</option>
-              @for (doc of doctors(); track doc.id) {
-                <option [ngValue]="doc.id">{{ doc.full_name }} · box {{ doc.box_number }}</option>
-              }
-            </select>
-          </div>
-          <div>
-            <label for="fStatus" class="mb-2 block text-sm font-medium text-slate-700">Estado</label>
-            <select id="fStatus" [ngModel]="filterStatus()" (ngModelChange)="filterStatus.set($event)"
-                    class="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5">
-              <option [ngValue]="null">Todos los estados</option>
-              @for (s of statuses; track s) {
-                <option [ngValue]="s">{{ statusLabel[s] }}</option>
-              }
-            </select>
-          </div>
-          <div class="flex items-end">
-            <button (click)="loadAgenda()" class="w-full rounded-md bg-pine px-4 py-2.5 font-medium text-white hover:bg-pine-dark">
-              Actualizar agenda
-            </button>
-          </div>
+    <main class="page">
+      <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p class="eyebrow">Recepción</p>
+          <h1 class="text-4xl sm:text-5xl">Agenda del <span class="text-coral">día</span></h1>
         </div>
+        <p class="text-sm">Clínica Veterinaria San Francisco · Talca</p>
+      </div>
 
-        @if (message(); as m) {
-          <p role="alert" class="mb-4 rounded-md px-4 py-2 text-sm"
-             [class]="m.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'">{{ m.text }}</p>
-        }
+      <section class="card mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <label for="fDate" class="label">Fecha</label>
+          <input id="fDate" type="date" [ngModel]="filterDate()" (ngModelChange)="filterDate.set($event); loadAgenda()" class="input" />
+        </div>
+        <div>
+          <label for="fDoc" class="label">Médico</label>
+          <select id="fDoc" [ngModel]="filterDoctorId()" (ngModelChange)="filterDoctorId.set($event); loadAgenda()" class="input">
+            <option [ngValue]="null">Todos los médicos</option>
+            @for (doc of doctors(); track doc.id) {
+              <option [ngValue]="doc.id">{{ doc.full_name }} · box {{ doc.box_number }}</option>
+            }
+          </select>
+        </div>
+        <div>
+          <label for="fStatus" class="label">Estado</label>
+          <select id="fStatus" [ngModel]="filterStatus()" (ngModelChange)="filterStatus.set($event)" class="input">
+            <option [ngValue]="null">Todos los estados</option>
+            @for (s of statuses; track s) {
+              <option [ngValue]="s">{{ statusLabel[s] }}</option>
+            }
+          </select>
+        </div>
+        <div class="flex items-end">
+          <button (click)="loadAgenda()" class="btn-dark w-full py-3">Actualizar agenda</button>
+        </div>
+      </section>
 
-        <div class="mb-8 rounded-lg bg-white p-6 shadow-sm">
-          @if (loadingAgenda()) {
-            <p class="text-slate-600">Cargando agenda…</p>
-          } @else if (visibleAgenda().length === 0) {
-            <p class="py-8 text-center text-slate-600">No hay citas para el filtro seleccionado.</p>
-          } @else {
-            <ul class="max-h-[28rem] space-y-3 overflow-y-auto">
-              @for (apt of visibleAgenda(); track apt.id) {
-                <li class="rounded-md border border-slate-300 p-4">
-                  <div class="flex items-start justify-between">
-                    <div>
-                      <p class="text-sm font-medium">{{ hhmm(apt.start_time) }}–{{ hhmm(apt.end_time) }} · {{ apt.doctor_name }} (box {{ apt.box_number }})</p>
-                      <p class="text-xs text-slate-500">Tutor: {{ apt.tutor_name }} · {{ apt.tutor_email }}</p>
-                    </div>
-                    <span class="rounded px-2 py-1 text-xs" [class]="statusClass[apt.status]">{{ statusLabel[apt.status] }}</span>
+      @if (message(); as m) {
+        <p role="alert" class="mb-4" [class]="m.ok ? 'alert-success' : 'alert-error'">{{ m.text }}</p>
+      }
+
+      <section class="card mb-6">
+        <h2 class="card-title">Citas ({{ visibleAgenda().length }})</h2>
+        @if (loadingAgenda()) {
+          <p>Cargando agenda…</p>
+        } @else if (visibleAgenda().length === 0) {
+          <p class="rounded-2xl bg-cream px-5 py-8 text-center">No hay citas para el filtro seleccionado.</p>
+        } @else {
+          <ul class="max-h-[30rem] space-y-3 overflow-y-auto pr-1">
+            @for (apt of visibleAgenda(); track apt.id) {
+              <li class="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-cream p-4">
+                <div class="flex items-center gap-4">
+                  <span class="grid h-14 w-16 place-items-center rounded-xl bg-white text-lg font-medium text-espresso">{{ hhmm(apt.start_time) }}</span>
+                  <div>
+                    <p class="font-medium text-espresso">{{ apt.tutor_name }}</p>
+                    <p class="text-xs">{{ apt.doctor_name }} · box {{ apt.box_number }} · {{ apt.tutor_email }}</p>
                   </div>
-                  @if (apt.status === 'CONFIRMED' || apt.status === 'ARRIVED') {
-                    <div class="mt-2 flex gap-4 text-sm">
-                      @if (apt.status === 'CONFIRMED') {
-                        <button class="text-pine hover:underline" (click)="setStatus(apt, 'ARRIVED')">Confirmar llegada</button>
-                      }
-                      <button class="text-green-700 hover:underline" (click)="setStatus(apt, 'COMPLETED')">Marcar atendida</button>
-                      <button class="text-red-700 hover:underline" (click)="cancel(apt)">Cancelar</button>
-                    </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                  <span [class]="statusClass[apt.status]">{{ statusLabel[apt.status] }}</span>
+                  @if (apt.status === 'CONFIRMED') {
+                    <button class="btn-outline px-4 py-1.5 text-sm" (click)="setStatus(apt, 'ARRIVED')">Confirmar llegada</button>
                   }
+                  @if (apt.status === 'CONFIRMED' || apt.status === 'ARRIVED') {
+                    <button class="btn-ghost px-4 py-1.5 text-sm" (click)="setStatus(apt, 'COMPLETED')">Marcar atendida</button>
+                    <button class="btn-link text-muted" (click)="cancel(apt)">Cancelar</button>
+                  }
+                </div>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+
+      <!-- Bandeja de notificaciones (VET-15) -->
+      <section class="card">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xl">Bandeja de notificaciones</h2>
+          <button (click)="toggleNotifications()" class="btn-link text-coral">
+            {{ showNotifications() ? 'Ocultar' : 'Ver notificaciones' }}
+          </button>
+        </div>
+        @if (showNotifications()) {
+          @if (notifications().length === 0) {
+            <p class="py-4 text-center">No hay notificaciones.</p>
+          } @else {
+            <ul class="mt-4 max-h-64 space-y-2 overflow-y-auto pr-1">
+              @for (n of notifications(); track $index) {
+                <li class="rounded-xl p-3"
+                    [class]="n.event_type.includes('error') ? 'bg-red-50' : n.event_type === 'smtp_sent' ? 'bg-emerald-50' : 'bg-cream'">
+                  <p class="text-sm font-medium text-espresso">{{ n.message }}</p>
+                  <p class="text-xs">{{ n.event_type }} · {{ n.timestamp.substring(0, 19).replace('T', ' ') }}</p>
                 </li>
               }
             </ul>
           }
-        </div>
-
-        <!-- Bandeja de notificaciones (VET-15) -->
-        <div class="rounded-lg bg-white p-6 shadow-sm">
-          <div class="flex items-center justify-between">
-            <h3 class="font-bold text-pine">Bandeja de notificaciones</h3>
-            <button (click)="toggleNotifications()" class="text-sm text-pine underline">
-              {{ showNotifications() ? 'Ocultar' : 'Ver notificaciones' }}
-            </button>
-          </div>
-          @if (showNotifications()) {
-            @if (notifications().length === 0) {
-              <p class="py-4 text-center text-slate-600">No hay notificaciones.</p>
-            } @else {
-              <ul class="mt-3 max-h-64 space-y-2 overflow-y-auto">
-                @for (n of notifications(); track $index) {
-                  <li class="rounded-md border p-3"
-                      [class]="n.event_type.includes('error') ? 'border-red-200 bg-red-50' : n.event_type === 'smtp_sent' ? 'border-green-200 bg-green-50' : 'border-slate-200'">
-                    <p class="text-sm font-medium">{{ n.message }}</p>
-                    <p class="text-xs text-slate-500">{{ n.event_type }} · {{ n.timestamp.substring(0, 19).replace('T', ' ') }}</p>
-                  </li>
-                }
-              </ul>
-            }
-          }
-        </div>
-      </div>
-    </section>
+        }
+      </section>
+    </main>
   `,
 })
 export class ReceptionComponent implements OnInit {

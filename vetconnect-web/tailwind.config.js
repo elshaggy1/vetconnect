@@ -3,13 +3,16 @@ module.exports = {
   content: ["./src/**/*.{html,ts}"],
   theme: {
     extend: {
-      fontFamily: { sans: ["Figtree", "ui-sans-serif", "system-ui", "sans-serif"] },
+      fontFamily: { sans: ["Golos Text", "ui-sans-serif", "system-ui", "sans-serif"] },
       colors: {
-        pine: { DEFAULT: "#1B4D43", dark: "#123830", soft: "#DCE9E5" },
-        mist: "#EEF3F2",
-        ink: "#1E2B28",
-        amber: { vet: "#F2B544" },
+        // Paleta cálida: café oscuro + coral sobre crema
+        espresso: { DEFAULT: "#3C2219", light: "#4B332B" },
+        coral: { DEFAULT: "#F38660", dark: "#E06E47", soft: "#FCE3D9" },
+        cream: { DEFAULT: "#FDF6EE", deep: "#F8EEE2" },
+        muted: { DEFAULT: "#897770", light: "#B29C94" },
+        line: "#E3D6D1",
       },
+      borderRadius: { "4xl": "2rem" },
     },
   },
   plugins: [],
